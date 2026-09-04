@@ -13,8 +13,8 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/stretchr/objx v0.5.3
 	github.com/tidwall/gjson v1.18.0
-	github.com/yuseferi/zax/v2 v2.3.6
-	go.uber.org/zap v1.27.1
+	github.com/yuseferi/zax/v2 v2.5.0
+	go.uber.org/zap v1.28.0
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
