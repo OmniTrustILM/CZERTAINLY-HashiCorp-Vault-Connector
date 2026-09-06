@@ -20,7 +20,6 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/yuseferi/zax/v2"
 
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"
@@ -137,7 +136,7 @@ func logMiddleware(next http.Handler) http.Handler {
 		correlationID := utils.GenerateRandomUUID()
 
 		ctx := context.Background()
-		ctx = zax.Set(ctx, []zap.Field{zap.String("correlation_id", correlationID)})
+		ctx = logger.WithFields(ctx, zap.String("correlation_id", correlationID))
 
 		r = r.WithContext(ctx)
 

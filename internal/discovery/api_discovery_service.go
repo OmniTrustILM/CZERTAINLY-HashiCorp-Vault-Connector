@@ -10,17 +10,47 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
 	vault2 "github.com/hashicorp/vault-client-go"
-	"github.com/yuseferi/zax/v2"
 	"go.uber.org/zap"
 )
+
+// discoveryRepository is the subset of *db.DiscoveryRepository's methods that
+// DiscoveryAPIService calls. Depending on this interface instead of the
+// concrete repository type lets tests substitute a fake and exercise service
+// logic without a live database.
+type discoveryRepository interface {
+	FindDiscoveryByUUID(uuid string) (*db.Discovery, error)
+	CreateDiscovery(discovery *db.Discovery) error
+	DeleteDiscovery(discovery *db.Discovery) error
+	UpdateDiscovery(discovery *db.Discovery) error
+	AssociateCertificatesToDiscovery(discovery *db.Discovery, certificates ...*db.Certificate) error
+	List(pagination db.Pagination, discovery *db.Discovery) (*db.Pagination, error)
+}
+
+// authorityRepository is the subset of *db.AuthorityRepository's methods that
+// DiscoveryAPIService calls, for the same reason.
+type authorityRepository interface {
+	FindAuthorityInstanceByUUID(uuid string) (*db.AuthorityInstance, error)
+	ListAuthorityInstances() ([]*db.AuthorityInstance, error)
+}
+
+// failDiscovery marks the discovery as failed and persists it.
+func (s *DiscoveryAPIService) failDiscovery(ctx context.Context, discovery *db.Discovery, reason string) {
+	s.log.With(logger.Fields(ctx)...).Error(reason)
+	discovery.Status = "FAILED"
+
+	if err := s.discoveryRepo.UpdateDiscovery(discovery); err != nil {
+		s.log.With(logger.Fields(ctx)...).Error(err.Error())
+	}
+}
 
 // DiscoveryAPIService is a service that implements the logic for the DiscoveryAPIServicer
 // This service should implement the business logic for every endpoint for the DiscoveryAPI API.
 // Include any external packages or services that will be required by this service.
 type DiscoveryAPIService struct {
-	discoveryRepo *db.DiscoveryRepository
-	authorityRepo *db.AuthorityRepository
+	discoveryRepo discoveryRepository
+	authorityRepo authorityRepository
 	log           *zap.Logger
 }
 
@@ -40,7 +70,7 @@ func (s *DiscoveryAPIService) DeleteDiscovery(ctx context.Context, uuid string) 
 		return model.Response(http.StatusNotFound, model.ErrorMessageDto{Message: "Discovery " + uuid + " not found."}), nil
 	}
 
-	s.log.With(zax.Get(ctx)...).Info("Deleting discovery", zap.String("discovery_uuid", discovery.UUID))
+	s.log.With(logger.Fields(ctx)...).Info("Deleting discovery", zap.String("discovery_uuid", discovery.UUID))
 	err = s.discoveryRepo.DeleteDiscovery(discovery)
 	if err != nil {
 		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{Message: "Unable to delete discover" + discovery.UUID}), nil
@@ -77,16 +107,11 @@ func (s *DiscoveryAPIService) DiscoverCertificate(ctx context.Context, discovery
 	enginesAttr := model.GetAttributeFromArrayByUUID(model.DISCOVERY_PKI_ENGINE_ATTR, discoveryRequestDto.Attributes)
 	var enginesList []string
 	if enginesAttr == nil {
-		s.log.With(zax.Get(ctx)...).Info("No PKI engines specified for discovery, trying to get all available engines")
+		s.log.With(logger.Fields(ctx)...).Info("No PKI engines specified for discovery, trying to get all available engines")
 		// get the vault client
 		client, err := vault.GetClient(*authority)
 		if err != nil {
-			discovery.Status = "FAILED"
-			err := s.discoveryRepo.UpdateDiscovery(discovery)
-			if err != nil {
-				s.log.With(zax.Get(ctx)...).Error(err.Error())
-			}
-			s.log.With(zax.Get(ctx)...).Error(err.Error())
+			s.failDiscovery(ctx, discovery, err.Error())
 			return model.Response(http.StatusBadRequest, model.ErrorMessageDto{Message: "Unable to create vault client"}), nil
 		}
 		ctx := context.Background()
@@ -112,7 +137,7 @@ func (s *DiscoveryAPIService) DiscoverCertificate(ctx context.Context, discovery
 		return model.Response(http.StatusNotFound, model.ErrorMessageDto{Message: "Unable to create discovery " + discovery.UUID}), nil
 	}
 
-	s.log.With(zax.Get(ctx)...).Info("Starting discovery of certificates", zap.String("discovery_uuid", discovery.UUID), zap.String("authority_uuid", authority.UUID))
+	s.log.With(logger.Fields(ctx)...).Info("Starting discovery of certificates", zap.String("discovery_uuid", discovery.UUID), zap.String("authority_uuid", authority.UUID))
 	go s.DiscoveryCertificates(ctx, authority, discovery, enginesList)
 
 	return model.Response(http.StatusOK, response), nil
@@ -152,39 +177,34 @@ func (s *DiscoveryAPIService) DiscoveryCertificates(ctx context.Context, authori
 	// get the vault client
 	client, err := vault.GetClient(*authority)
 	if err != nil {
-		discovery.Status = "FAILED"
-		err := s.discoveryRepo.UpdateDiscovery(discovery)
-		if err != nil {
-			s.log.With(zax.Get(ctx)...).Error(err.Error())
-		}
-		s.log.With(zax.Get(ctx)...).Error(err.Error())
+		s.failDiscovery(ctx, discovery, err.Error())
 		return
 	}
 
 	if len(list) == 0 {
-		s.log.With(zax.Get(ctx)...).Info("No PKI engines available for discovery")
+		s.log.With(logger.Fields(ctx)...).Info("No PKI engines available for discovery")
 	} else {
 		for _, engine := range list {
-			s.log.With(zax.Get(ctx)...).Info("Discovering certificates", zap.String("engine", engine))
+			s.log.With(logger.Fields(ctx)...).Info("Discovering certificates", zap.String("engine", engine))
 			certificates, err := client.Secrets.PkiListCerts(ctx, vault2.WithMountPath(engine))
 			if err != nil {
 				discovery.Status = "FAILED"
 				err := s.discoveryRepo.UpdateDiscovery(discovery)
 				if err != nil {
-					s.log.With(zax.Get(ctx)...).Error(err.Error())
+					s.log.With(logger.Fields(ctx)...).Error(err.Error())
 				}
 				return
 			}
 			var certificateKeys []*db.Certificate
 			for _, certificateKey := range certificates.Data.Keys {
-				s.log.With(zax.Get(ctx)...).Debug("Reading certificate", zap.String("certificate_key", certificateKey), zap.String("engine", engine))
+				s.log.With(logger.Fields(ctx)...).Debug("Reading certificate", zap.String("certificate_key", certificateKey), zap.String("engine", engine))
 				certificateData, err := client.Secrets.PkiReadCert(ctx, certificateKey, vault2.WithMountPath(engine))
 				if err != nil {
 					discovery.Status = "FAILED"
-					s.log.With(zax.Get(ctx)...).Error("Error reading certificate", zap.String("certificate_key", certificateKey), zap.String("engine", engine), zap.Error(err))
+					s.log.With(logger.Fields(ctx)...).Error("Error reading certificate", zap.String("certificate_key", certificateKey), zap.String("engine", engine), zap.Error(err))
 					err := s.discoveryRepo.UpdateDiscovery(discovery)
 					if err != nil {
-						s.log.With(zax.Get(ctx)...).Error(err.Error())
+						s.log.With(logger.Fields(ctx)...).Error(err.Error())
 					}
 
 					return
@@ -198,12 +218,7 @@ func (s *DiscoveryAPIService) DiscoveryCertificates(ctx context.Context, authori
 			}
 			err = s.discoveryRepo.AssociateCertificatesToDiscovery(discovery, certificateKeys...)
 			if err != nil {
-				discovery.Status = "FAILED"
-				s.log.With(zax.Get(ctx)...).Error(err.Error())
-				err := s.discoveryRepo.UpdateDiscovery(discovery)
-				if err != nil {
-					s.log.With(zax.Get(ctx)...).Error(err.Error())
-				}
+				s.failDiscovery(ctx, discovery, err.Error())
 				return
 			}
 		}
@@ -212,14 +227,9 @@ func (s *DiscoveryAPIService) DiscoveryCertificates(ctx context.Context, authori
 	discovery.Status = "COMPLETED"
 	err = s.discoveryRepo.UpdateDiscovery(discovery)
 	if err != nil {
-		discovery.Status = "FAILED"
-		s.log.With(zax.Get(ctx)...).Error(err.Error())
-		err := s.discoveryRepo.UpdateDiscovery(discovery)
-		if err != nil {
-			s.log.With(zax.Get(ctx)...).Error(err.Error())
-		}
+		s.failDiscovery(ctx, discovery, err.Error())
 		return
 	}
 
-	s.log.With(zax.Get(ctx)...).Info("Discovery completed", zap.String("discovery_uuid", discovery.UUID), zap.String("authority_uuid", authority.UUID), zap.Int("total_certificates", len(discovery.Certificates)))
+	s.log.With(logger.Fields(ctx)...).Info("Discovery completed", zap.String("discovery_uuid", discovery.UUID), zap.String("authority_uuid", authority.UUID), zap.Int("total_certificates", len(discovery.Certificates)))
 }

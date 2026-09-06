@@ -5,11 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/db"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/utils"
 	vault2 "github.com/hashicorp/vault-client-go"
 	"github.com/hashicorp/vault-client-go/schema"
-	"github.com/yuseferi/zax/v2"
 	"go.uber.org/zap"
 	"net/http"
 )
@@ -59,10 +59,10 @@ func (s *CertificateManagementAPIService) IdentifyCertificate(ctx context.Contex
 
 	}
 
-	s.log.With(zax.Get(ctx)...).Info("Identifying certificate with serial number: " + serialNumber)
+	s.log.With(logger.Fields(ctx)...).Info("Identifying certificate with serial number: " + serialNumber)
 	_, err = client.Secrets.PkiReadCert(ctx, serialNumber, vault2.WithMountPath(engineName+"/"))
 	if err != nil {
-		s.log.With(zax.Get(ctx)...).Error(err.Error())
+		s.log.With(logger.Fields(ctx)...).Error(err.Error())
 		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
 			Message: err.Error(),
 		}), nil
@@ -129,10 +129,10 @@ func (s *CertificateManagementAPIService) signOrRenewCertificate(ctx context.Con
 		Csr:        string(pemBytes),
 	}
 
-	s.log.With(zax.Get(ctx)...).Info(action, zap.String("common_name", commonName), zap.String("role", role), zap.String("engine_name", engineName))
+	s.log.With(logger.Fields(ctx)...).Info(action, zap.String("common_name", commonName), zap.String("role", role), zap.String("engine_name", engineName))
 	certificateSignResponse, err := client.Secrets.PkiSignWithRole(ctx, role, signRequest, vault2.WithMountPath(engineName+"/"))
 	if err != nil {
-		s.log.With(zax.Get(ctx)...).Error(err.Error())
+		s.log.With(logger.Fields(ctx)...).Error(err.Error())
 		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
 			Message: err.Error(),
 		}), nil
@@ -142,7 +142,7 @@ func (s *CertificateManagementAPIService) signOrRenewCertificate(ctx context.Con
 	serialNumber := certificateSignResponse.Data.SerialNumber
 	pemBlock, _ = pem.Decode([]byte(certificate))
 	if pemBlock == nil {
-		s.log.With(zax.Get(ctx)...).Error("Failed to decode PEM file")
+		s.log.With(logger.Fields(ctx)...).Error("Failed to decode PEM file")
 		if err != nil {
 			return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
 				Message: "Failed to decode PEM file",
@@ -221,10 +221,10 @@ func (s *CertificateManagementAPIService) RevokeCertificate(ctx context.Context,
 
 	}
 
-	s.log.With(zax.Get(ctx)...).Info("Revoking certificate", zap.String("serial_number", serialNumber), zap.String("reason", string(certRevocationDto.Reason)), zap.String("engine_name", engineName))
+	s.log.With(logger.Fields(ctx)...).Info("Revoking certificate", zap.String("serial_number", serialNumber), zap.String("reason", string(certRevocationDto.Reason)), zap.String("engine_name", engineName))
 	_, err = client.Secrets.PkiRevoke(ctx, revokeRequest, vault2.WithMountPath(engineName+"/"))
 	if err != nil {
-		s.log.With(zax.Get(ctx)...).Error(err.Error())
+		s.log.With(logger.Fields(ctx)...).Error(err.Error())
 		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
 			Message: err.Error(),
 		}), nil
@@ -236,12 +236,12 @@ func (s *CertificateManagementAPIService) RevokeCertificate(ctx context.Context,
 
 // ValidateIssueCertificateAttributes - Validate list of Attributes to issue Certificate
 func (s *CertificateManagementAPIService) ValidateIssueCertificateAttributes(ctx context.Context, uuid string, requestAttributeDto []model.RequestAttributeDto) (model.ImplResponse, error) {
-	s.log.With(zax.Get(ctx)...).Info("Validating issue certificate attributes", zap.String("uuid", uuid))
+	s.log.With(logger.Fields(ctx)...).Info("Validating issue certificate attributes", zap.String("uuid", uuid))
 	return model.Response(http.StatusOK, nil), nil
 }
 
 // ValidateRevokeCertificateAttributes - Validate list of Attributes to revoke certificate
 func (s *CertificateManagementAPIService) ValidateRevokeCertificateAttributes(ctx context.Context, uuid string, requestAttributeDto []model.RequestAttributeDto) (model.ImplResponse, error) {
-	s.log.With(zax.Get(ctx)...).Info("Validating revoke certificate attributes", zap.String("uuid", uuid))
+	s.log.With(logger.Fields(ctx)...).Info("Validating revoke certificate attributes", zap.String("uuid", uuid))
 	return model.Response(http.StatusOK, nil), nil
 }
