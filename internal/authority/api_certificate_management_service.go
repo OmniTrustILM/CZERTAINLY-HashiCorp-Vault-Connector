@@ -7,7 +7,6 @@ import (
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/db"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/utils"
-	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/vault"
 	vault2 "github.com/hashicorp/vault-client-go"
 	"github.com/hashicorp/vault-client-go/schema"
 	"github.com/yuseferi/zax/v2"
@@ -19,7 +18,7 @@ import (
 // This service should implement the business logic for every endpoint for the CertificateManagementAPI API.
 // Include any external packages or services that will be required by this service.
 type CertificateManagementAPIService struct {
-	authorityRepo *db.AuthorityRepository
+	authorityRepo authorityRepository
 	log           *zap.Logger
 }
 
@@ -33,24 +32,17 @@ func NewCertificateManagementAPIService(authorityRepo *db.AuthorityRepository, l
 
 // IdentifyCertificate - Identify Certificate
 func (s *CertificateManagementAPIService) IdentifyCertificate(ctx context.Context, uuid string, certificateIdentificationRequestDto model.CertificateIdentificationRequestDto) (model.ImplResponse, error) {
-	raAttributes := certificateIdentificationRequestDto.RaProfileAttributes
-	engineName, err := getRAProfileEngineName(raAttributes)
-	if err != nil {
-		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
-			Message: invalidRAProfileEngineMessage,
-		}), nil
+	engineName, errResp := resolveEngineName(certificateIdentificationRequestDto.RaProfileAttributes)
+	if errResp != nil {
+		return *errResp, nil
 	}
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusNotFound, model.ErrorMessageDto{
-			Message: "Authority not found",
-		}), nil
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
-	client, err := vault.GetClient(*authority)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: err.Error(),
-		}), nil
+	client, errResp := connectVault(*authority)
+	if errResp != nil {
+		return *errResp, nil
 	}
 	decoded, err := base64.StdEncoding.DecodeString(certificateIdentificationRequestDto.Certificate)
 	if err != nil {
@@ -83,41 +75,35 @@ func (s *CertificateManagementAPIService) IdentifyCertificate(ctx context.Contex
 	return model.Response(http.StatusOK, response), nil
 }
 
-// IssueCertificate - Issue Certificate
-func (s *CertificateManagementAPIService) IssueCertificate(ctx context.Context, uuid string, certificateSignRequestDto model.CertificateSignRequestDto) (model.ImplResponse, error) {
-	//TODO: refactor and merge code with renew certificate
-	if certificateSignRequestDto.CertificateRequestFormat != model.CERTIFICATEREQUESTFORMAT_PKCS10 {
+// signOrRenewCertificate implements the flow shared by IssueCertificate and
+// RenewCertificate: both submit a PKCS#10 request to Vault's PKI secrets
+// engine and return the resulting leaf certificate in the same response
+// shape. action names the operation for the info log ("Issuing certificate"
+// vs "Renewing certificate").
+func (s *CertificateManagementAPIService) signOrRenewCertificate(ctx context.Context, uuid, action string, format model.CertificateRequestFormat, raAttributes []model.Attribute, requestB64 string) (model.ImplResponse, error) {
+	if format != model.CERTIFICATEREQUESTFORMAT_PKCS10 {
 		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
 			Message: "Invalid certificate request format, PKCS#10 format expected.",
 		}), nil
 	}
 
-	raAttributes := certificateSignRequestDto.RaProfileAttributes
-	engineName, err := getRAProfileEngineName(raAttributes)
-	if err != nil {
-		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
-			Message: invalidRAProfileEngineMessage,
-		}), nil
+	engineName, errResp := resolveEngineName(raAttributes)
+	if errResp != nil {
+		return *errResp, nil
 	}
-	role, err := getRAProfileRoleName(raAttributes)
-	if err != nil {
-		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
-			Message: invalidRAProfileRoleMessage,
-		}), nil
+	role, errResp := resolveRoleName(raAttributes)
+	if errResp != nil {
+		return *errResp, nil
 	}
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusNotFound, model.ErrorMessageDto{
-			Message: "Authority not found",
-		}), nil
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
-	client, err := vault.GetClient(*authority)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: err.Error(),
-		}), nil
+	client, errResp := connectVault(*authority)
+	if errResp != nil {
+		return *errResp, nil
 	}
-	decoded, err := base64.StdEncoding.DecodeString(certificateSignRequestDto.Request)
+	decoded, err := base64.StdEncoding.DecodeString(requestB64)
 	if err != nil {
 		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
 			Message: err.Error(),
@@ -143,7 +129,7 @@ func (s *CertificateManagementAPIService) IssueCertificate(ctx context.Context, 
 		Csr:        string(pemBytes),
 	}
 
-	s.log.With(zax.Get(ctx)...).Info("Issuing certificate", zap.String("common_name", commonName), zap.String("role", role), zap.String("engine_name", engineName))
+	s.log.With(zax.Get(ctx)...).Info(action, zap.String("common_name", commonName), zap.String("role", role), zap.String("engine_name", engineName))
 	certificateSignResponse, err := client.Secrets.PkiSignWithRole(ctx, role, signRequest, vault2.WithMountPath(engineName+"/"))
 	if err != nil {
 		s.log.With(zax.Get(ctx)...).Error(err.Error())
@@ -174,6 +160,12 @@ func (s *CertificateManagementAPIService) IssueCertificate(ctx context.Context, 
 	}
 
 	return model.Response(http.StatusOK, CertificateDataResponseDto), nil
+}
+
+// IssueCertificate - Issue Certificate
+func (s *CertificateManagementAPIService) IssueCertificate(ctx context.Context, uuid string, certificateSignRequestDto model.CertificateSignRequestDto) (model.ImplResponse, error) {
+	return s.signOrRenewCertificate(ctx, uuid, "Issuing certificate",
+		certificateSignRequestDto.CertificateRequestFormat, certificateSignRequestDto.RaProfileAttributes, certificateSignRequestDto.Request)
 }
 
 // ListIssueCertificateAttributes - List of Attributes to issue Certificate
@@ -188,114 +180,23 @@ func (s *CertificateManagementAPIService) ListRevokeCertificateAttributes(ctx co
 
 // RenewCertificate - Renew Certificate
 func (s *CertificateManagementAPIService) RenewCertificate(ctx context.Context, uuid string, certificateRenewRequestDto model.CertificateRenewRequestDto) (model.ImplResponse, error) {
-	if certificateRenewRequestDto.CertificateRequestFormat != model.CERTIFICATEREQUESTFORMAT_PKCS10 {
-		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
-			Message: "Invalid certificate request format, PKCS#10 format expected.",
-		}), nil
-	}
-
-	raAttributes := certificateRenewRequestDto.RaProfileAttributes
-	engineName, err := getRAProfileEngineName(raAttributes)
-	if err != nil {
-		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
-			Message: invalidRAProfileEngineMessage,
-		}), nil
-	}
-	role, err := getRAProfileRoleName(raAttributes)
-	if err != nil {
-		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
-			Message: invalidRAProfileRoleMessage,
-		}), nil
-	}
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusNotFound, model.ErrorMessageDto{
-			Message: "Authority not found",
-		}), nil
-	}
-
-	client, err := vault.GetClient(*authority)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: err.Error(),
-		}), nil
-	}
-	decoded, err := base64.StdEncoding.DecodeString(certificateRenewRequestDto.Request)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: err.Error(),
-		}), nil
-
-	}
-	commonName, err := utils.ExtractCommonName(decoded)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: err.Error(),
-		}), nil
-
-	}
-	pemBlock := &pem.Block{
-		Type:  "CERTIFICATE REQUEST", // Or "CERTIFICATE", depending on what's in the DER file
-		Bytes: decoded,
-	}
-	pemBytes := pem.EncodeToMemory(pemBlock)
-	signRequest := schema.PkiSignWithRoleRequest{
-		CommonName: commonName,
-		Csr:        string(pemBytes),
-	}
-
-	s.log.With(zax.Get(ctx)...).Info("Renewing certificate", zap.String("common_name", commonName), zap.String("role", role), zap.String("engine_name", engineName))
-	certificateSignResponse, err := client.Secrets.PkiSignWithRole(ctx, role, signRequest, vault2.WithMountPath(engineName+"/"))
-	if err != nil {
-		s.log.With(zax.Get(ctx)...).Error(err.Error())
-		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
-			Message: err.Error(),
-		}), nil
-
-	}
-	certificate := certificateSignResponse.Data.Certificate
-	serialNumber := certificateSignResponse.Data.SerialNumber
-	pemBlock, _ = pem.Decode([]byte(certificate))
-	if pemBlock == nil {
-		s.log.With(zax.Get(ctx)...).Error("Failed to decode PEM file")
-		if err != nil {
-			return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-				Message: "Failed to decode PEM file",
-			}), nil
-
-		}
-	}
-	derBytes := pemBlock.Bytes
-
-	CertificateDataResponseDto := model.CertificateDataResponseDto{
-		CertificateData: base64.StdEncoding.EncodeToString(derBytes),
-		Uuid:            utils.DeterministicGUID(serialNumber),
-		Meta:            nil,
-		CertificateType: "X.509",
-	}
-
-	return model.Response(http.StatusOK, CertificateDataResponseDto), nil
+	return s.signOrRenewCertificate(ctx, uuid, "Renewing certificate",
+		certificateRenewRequestDto.CertificateRequestFormat, certificateRenewRequestDto.RaProfileAttributes, certificateRenewRequestDto.Request)
 }
 
 // RevokeCertificate - Revoke Certificate
 func (s *CertificateManagementAPIService) RevokeCertificate(ctx context.Context, uuid string, certRevocationDto model.CertRevocationDto) (model.ImplResponse, error) {
-	engineName, err := getRAProfileEngineName(certRevocationDto.RaProfileAttributes)
-	if err != nil {
-		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
-			Message: invalidRAProfileEngineMessage,
-		}), nil
+	engineName, errResp := resolveEngineName(certRevocationDto.RaProfileAttributes)
+	if errResp != nil {
+		return *errResp, nil
 	}
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusNotFound, model.ErrorMessageDto{
-			Message: "Authority not found",
-		}), nil
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
-	client, err := vault.GetClient(*authority)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: err.Error(),
-		}), nil
+	client, errResp := connectVault(*authority)
+	if errResp != nil {
+		return *errResp, nil
 	}
 	decoded, err := base64.StdEncoding.DecodeString(certRevocationDto.Certificate)
 	if err != nil {

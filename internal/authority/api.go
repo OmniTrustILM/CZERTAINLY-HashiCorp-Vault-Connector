@@ -60,7 +60,7 @@ type AuthorityManagementAPIServicer interface {
 	ListRAProfileAttributes(context.Context, string) (model.ImplResponse, error)
 	RemoveAuthorityInstance(context.Context, string) (model.ImplResponse, error)
 	UpdateAuthorityInstance(context.Context, string, model.AuthorityProviderInstanceRequestDto) (model.ImplResponse, error)
-	ValidateRAProfileAttributes(context.Context, string, []model.RequestAttributeDto) (model.ImplResponse, error)
+	ValidateRAProfileAttributes(context.Context, string, []model.Attribute) (model.ImplResponse, error)
 	RAProfileCallback(context.Context, string, string) (model.ImplResponse, error)
 }
 

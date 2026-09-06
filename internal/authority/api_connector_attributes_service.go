@@ -18,7 +18,7 @@ import (
 // This service should implement the business logic for every endpoint for the ConnectorAttributesAPI API.
 // Include any external packages or services that will be required by this service.
 type ConnectorAttributesAPIService struct {
-	authorityRepo *db.AuthorityRepository
+	authorityRepo authorityRepository
 	log           *zap.Logger
 }
 

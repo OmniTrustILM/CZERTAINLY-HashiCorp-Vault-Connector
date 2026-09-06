@@ -2,7 +2,6 @@ package authority
 
 import (
 	"context"
-	"encoding/json"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/db"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/utils"
@@ -18,7 +17,7 @@ import (
 // This service should implement the business logic for every endpoint for the AuthorityManagementAPI API.
 // Include any external packages or services that will be required by this service.
 type AuthorityManagementAPIService struct {
-	authorityRepo *db.AuthorityRepository
+	authorityRepo authorityRepository
 	log           *zap.Logger
 }
 
@@ -35,25 +34,19 @@ func (s *AuthorityManagementAPIService) CreateAuthorityInstance(ctx context.Cont
 	attributes := request.Attributes
 	URL := model.GetAttributeFromArrayByUUID(model.AUTHORITY_URL_ATTR, attributes).GetContent()[0].GetData().(string)
 	credentialType := model.GetAttributeFromArrayByUUID(model.AUTHORITY_CREDENTIAL_TYPE_ATTR, attributes).GetContent()[0].GetData().(string)
-	var roleId, secretId, mountPath, vaultRole string
-	if model.GetAttributeFromArrayByUUID(model.AUTHORITY_MOUNT_PATH_ATTR, attributes) != nil {
-		mountPath = model.GetAttributeFromArrayByUUID(model.AUTHORITY_MOUNT_PATH_ATTR, attributes).GetContent()[0].GetData().(string)
-	}
+	mountPath := optionalStringAttribute(model.AUTHORITY_MOUNT_PATH_ATTR, attributes)
+	var roleId, secretId, vaultRole string
 	switch credentialType {
 	case model.APPROLE_CRED:
-		roleId = model.GetAttributeFromArrayByUUID(model.AUTHORITY_ROLE_ID_ATTR, attributes).GetContent()[0].(model.SecretAttributeContent).GetData().(model.SecretAttributeContentData).Secret
-		secretId = model.GetAttributeFromArrayByUUID(model.AUTHORITY_ROLE_SECRET_ATTR, attributes).GetContent()[0].(model.SecretAttributeContent).GetData().(model.SecretAttributeContentData).Secret
+		roleId = secretAttributeValue(model.AUTHORITY_ROLE_ID_ATTR, attributes)
+		secretId = secretAttributeValue(model.AUTHORITY_ROLE_SECRET_ATTR, attributes)
 	case model.KUBERNETES_CRED, model.JWTOIDC_CRED:
-		if model.GetAttributeFromArrayByUUID(model.AUTHORITY_VAULT_ROLE_ATTR, attributes) != nil {
-			vaultRole = model.GetAttributeFromArrayByUUID(model.AUTHORITY_VAULT_ROLE_ATTR, attributes).GetContent()[0].GetData().(string)
-		}
+		vaultRole = optionalStringAttribute(model.AUTHORITY_VAULT_ROLE_ATTR, attributes)
 	}
 	authorityName := request.Name
-	marshaledAttrs, err := json.Marshal(attributes)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: "Failed to marshal attributes",
-		}), err
+	marshaledAttrs, errResp, err := marshalAttributes(attributes)
+	if errResp != nil {
+		return *errResp, err
 	}
 	authority := db.AuthorityInstance{
 		UUID:           utils.DeterministicGUID(authorityName),
@@ -95,11 +88,9 @@ func (s *AuthorityManagementAPIService) CreateAuthorityInstance(ctx context.Cont
 
 // GetAuthorityInstance - Get an Authority instance
 func (s *AuthorityManagementAPIService) GetAuthorityInstance(ctx context.Context, uuid string) (model.ImplResponse, error) {
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusNotFound, model.ErrorMessageDto{
-			Message: "Authority not found",
-		}), nil
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
 	attributes := model.UnmarshalAttributes([]byte(authority.Attributes))
 	authorityDto := model.AuthorityProviderInstanceDto{
@@ -112,24 +103,18 @@ func (s *AuthorityManagementAPIService) GetAuthorityInstance(ctx context.Context
 
 // GetCaCertificates - Get the Authority Instance&#39;s certificate chain
 func (s *AuthorityManagementAPIService) GetCaCertificates(ctx context.Context, uuid string, caCertificatesRequestDto model.CaCertificatesRequestDto) (model.ImplResponse, error) {
-	engineName, err := getRAProfileEngineName(caCertificatesRequestDto.RaProfileAttributes)
-	if err != nil {
-		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
-			Message: invalidRAProfileEngineMessage,
-		}), nil
+	engineName, errResp := resolveEngineName(caCertificatesRequestDto.RaProfileAttributes)
+	if errResp != nil {
+		return *errResp, nil
 	}
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusNotFound, model.ErrorMessageDto{
-			Message: "Authority not found",
-		}), nil
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
 
-	client, err := vault.GetClient(*authority)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: err.Error(),
-		}), nil
+	client, errResp := connectVault(*authority)
+	if errResp != nil {
+		return *errResp, nil
 	}
 
 	s.log.With(zax.Get(ctx)...).Info("Getting CA certificates", zap.String("authority", authority.Name), zap.String("uuid", authority.UUID))
@@ -143,7 +128,6 @@ func (s *AuthorityManagementAPIService) GetCaCertificates(ctx context.Context, u
 		}), nil
 
 	}
-	var caChainCertificates []model.CertificateDataResponseDto
 	chain, err := utils.GetCertificatesFromDer([]byte(certificateCaResponse.Data.CaChain))
 	if err != nil {
 		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
@@ -151,31 +135,18 @@ func (s *AuthorityManagementAPIService) GetCaCertificates(ctx context.Context, u
 		}), err
 
 	}
-	for _, cert := range chain {
-		caChainCertificates = append(caChainCertificates, model.CertificateDataResponseDto{
-			CertificateData: cert,
-			Uuid:            utils.DeterministicGUID(),
-			Meta:            nil,
-			CertificateType: "X.509",
-		})
-	}
-	caCertificatesResponseDto := model.CaCertificatesResponseDto{
-		Certificates: caChainCertificates,
-	}
 
-	return model.Response(http.StatusOK, caCertificatesResponseDto), nil
+	return model.Response(http.StatusOK, certificateChainResponse(chain)), nil
 }
 
 // GetConnection - Connect to Authority
 func (s *AuthorityManagementAPIService) GetConnection(ctx context.Context, uuid string) (model.ImplResponse, error) {
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: "Failed to marshal attributes",
-		}), err
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
 
-	_, err = vault.GetClient(*authority)
+	_, err := vault.GetClient(*authority)
 	if err != nil {
 		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
 			Message: "Failed to connect to vault",
@@ -187,24 +158,18 @@ func (s *AuthorityManagementAPIService) GetConnection(ctx context.Context, uuid 
 
 // GetCrl - Get the latest CRL for the Authority Instance
 func (s *AuthorityManagementAPIService) GetCrl(ctx context.Context, uuid string, certificateRevocationListRequestDto model.CertificateRevocationListRequestDto) (model.ImplResponse, error) {
-	engineName, err := getRAProfileEngineName(certificateRevocationListRequestDto.RaProfileAttributes)
-	if err != nil {
-		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
-			Message: invalidRAProfileEngineMessage,
-		}), nil
+	engineName, errResp := resolveEngineName(certificateRevocationListRequestDto.RaProfileAttributes)
+	if errResp != nil {
+		return *errResp, nil
 	}
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusNotFound, model.ErrorMessageDto{
-			Message: "Authority not found",
-		}), nil
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
 
-	client, err := vault.GetClient(*authority)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: err.Error(),
-		}), nil
+	client, errResp := connectVault(*authority)
+	if errResp != nil {
+		return *errResp, nil
 	}
 
 	var chain []string
@@ -241,26 +206,17 @@ func (s *AuthorityManagementAPIService) GetCrl(ctx context.Context, uuid string,
 		}
 	}
 
-	var caChainCertificates []model.CertificateDataResponseDto
-
-	for _, cert := range chain {
-		caChainCertificates = append(caChainCertificates, model.CertificateDataResponseDto{
-			CertificateData: cert,
-			Uuid:            utils.DeterministicGUID(),
-			Meta:            nil,
-			CertificateType: "X.509",
-		})
-	}
-	caCertificatesResponseDto := model.CaCertificatesResponseDto{
-		Certificates: caChainCertificates,
-	}
-
-	return model.Response(http.StatusOK, caCertificatesResponseDto), nil
+	return model.Response(http.StatusOK, certificateChainResponse(chain)), nil
 }
 
 // ListAuthorityInstances - List Authority instances
 func (s *AuthorityManagementAPIService) ListAuthorityInstances(ctx context.Context) (model.ImplResponse, error) {
-	authorities, _ := s.authorityRepo.ListAuthorityInstances()
+	authorities, err := s.authorityRepo.ListAuthorityInstances()
+	if err != nil {
+		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
+			Message: "Failed to list authority instances",
+		}), nil
+	}
 	var authoritiesDto []model.AuthorityProviderInstanceDto
 	for _, authority := range authorities {
 		attributes := model.UnmarshalAttributes([]byte(authority.Attributes))
@@ -276,11 +232,9 @@ func (s *AuthorityManagementAPIService) ListAuthorityInstances(ctx context.Conte
 
 // ListRAProfileAttributes - List RA Profile Attributes
 func (s *AuthorityManagementAPIService) ListRAProfileAttributes(ctx context.Context, uuid string) (model.ImplResponse, error) {
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusNotFound, model.ErrorMessageDto{
-			Message: "Authority not found",
-		}), nil
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
 	client, err := vault.GetClient(*authority)
 	if err != nil {
@@ -344,38 +298,27 @@ func (s *AuthorityManagementAPIService) RemoveAuthorityInstance(ctx context.Cont
 
 // UpdateAuthorityInstance - Update Authority instance
 func (s *AuthorityManagementAPIService) UpdateAuthorityInstance(ctx context.Context, uuid string, request model.AuthorityProviderInstanceRequestDto) (model.ImplResponse, error) {
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: "Failed to marshal attributes",
-		}), err
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
 	attributes := request.Attributes
 	URL := model.GetAttributeFromArrayByUUID(model.AUTHORITY_URL_ATTR, attributes).GetContent()[0].GetData().(string)
 	credentialType := model.GetAttributeFromArrayByUUID(model.AUTHORITY_CREDENTIAL_TYPE_ATTR, attributes).GetContent()[0].GetData().(string)
 	authorityName := request.Name
-	var roleId, secretId, mountPath, vaultRole string
-	if model.GetAttributeFromArrayByUUID(model.AUTHORITY_MOUNT_PATH_ATTR, attributes) != nil {
-		mountPath = model.GetAttributeFromArrayByUUID(model.AUTHORITY_MOUNT_PATH_ATTR, attributes).GetContent()[0].GetData().(string)
-	}
-	if model.GetAttributeFromArrayByUUID(model.AUTHORITY_VAULT_ROLE_ATTR, attributes) != nil {
-		vaultRole = model.GetAttributeFromArrayByUUID(model.AUTHORITY_VAULT_ROLE_ATTR, attributes).GetContent()[0].GetData().(string)
-	}
+	mountPath := optionalStringAttribute(model.AUTHORITY_MOUNT_PATH_ATTR, attributes)
+	vaultRole := optionalStringAttribute(model.AUTHORITY_VAULT_ROLE_ATTR, attributes)
+	var roleId, secretId string
 	switch credentialType {
 	case model.APPROLE_CRED:
-		roleId = model.GetAttributeFromArrayByUUID(model.AUTHORITY_ROLE_ID_ATTR, attributes).GetContent()[0].(model.SecretAttributeContent).GetData().(model.SecretAttributeContentData).Secret
-		secretId = model.GetAttributeFromArrayByUUID(model.AUTHORITY_ROLE_SECRET_ATTR, attributes).GetContent()[0].(model.SecretAttributeContent).GetData().(model.SecretAttributeContentData).Secret
+		roleId = secretAttributeValue(model.AUTHORITY_ROLE_ID_ATTR, attributes)
+		secretId = secretAttributeValue(model.AUTHORITY_ROLE_SECRET_ATTR, attributes)
 	case model.KUBERNETES_CRED, model.JWTOIDC_CRED:
-		if model.GetAttributeFromArrayByUUID(model.AUTHORITY_VAULT_ROLE_ATTR, attributes) != nil {
-			vaultRole = model.GetAttributeFromArrayByUUID(model.AUTHORITY_VAULT_ROLE_ATTR, attributes).GetContent()[0].GetData().(string)
-		}
-
+		vaultRole = optionalStringAttribute(model.AUTHORITY_VAULT_ROLE_ATTR, attributes)
 	}
-	marshaledAttrs, err := json.Marshal(attributes)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: "Failed to marshal attributes",
-		}), err
+	marshaledAttrs, errResp, err := marshalAttributes(attributes)
+	if errResp != nil {
+		return *errResp, err
 	}
 	authority.Name = authorityName
 	authority.URL = URL
@@ -406,7 +349,7 @@ func (s *AuthorityManagementAPIService) UpdateAuthorityInstance(ctx context.Cont
 }
 
 // ValidateRAProfileAttributes - Validate RA Profile attributes
-func (s *AuthorityManagementAPIService) ValidateRAProfileAttributes(ctx context.Context, uuid string, requestAttributeDto []model.RequestAttributeDto) (model.ImplResponse, error) {
+func (s *AuthorityManagementAPIService) ValidateRAProfileAttributes(ctx context.Context, uuid string, attributes []model.Attribute) (model.ImplResponse, error) {
 	s.log.With(zax.Get(ctx)...).Info("Validating RA Profile attributes", zap.String("uuid", uuid))
 	return model.Response(http.StatusOK, nil), nil
 }

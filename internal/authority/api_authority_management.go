@@ -324,6 +324,12 @@ func (c *AuthorityManagementAPIController) UpdateAuthorityInstance(w http.Respon
 	}
 
 	authorityProviderInstanceRequestDtoParam.Unmarshal(jsonContent)
+
+	if err := model.AssertAuthorityProviderInstanceRequestDtoRequired(*authorityProviderInstanceRequestDtoParam); err != nil {
+		c.errorHandler(w, r, err, nil)
+		return
+	}
+
 	result, err := c.service.UpdateAuthorityInstance(r.Context(), uuidParam, *authorityProviderInstanceRequestDtoParam)
 	// If an error occurred, encode the error with the status code
 	if err != nil {
@@ -345,20 +351,13 @@ func (c *AuthorityManagementAPIController) ValidateRAProfileAttributes(w http.Re
 		c.errorHandler(w, r, &model.RequiredError{Field: "uuid"}, nil)
 		return
 	}
-	var requestAttributeDtoParam []model.RequestAttributeDto
 	jsonContent, err := io.ReadAll(r.Body)
 	if err != nil {
 		c.errorHandler(w, r, &model.ParsingError{Err: err}, nil)
 		return
 	}
-	model.UnmarshalAttributesValues(jsonContent)
-	for _, el := range requestAttributeDtoParam {
-		if err := model.AssertRequestAttributeDtoRequired(el); err != nil {
-			c.errorHandler(w, r, err, nil)
-			return
-		}
-	}
-	result, err := c.service.ValidateRAProfileAttributes(r.Context(), uuidParam, requestAttributeDtoParam)
+	attributes := model.UnmarshalAttributesValues(jsonContent)
+	result, err := c.service.ValidateRAProfileAttributes(r.Context(), uuidParam, attributes)
 	// If an error occurred, encode the error with the status code
 	if err != nil {
 		c.errorHandler(w, r, err, &result)

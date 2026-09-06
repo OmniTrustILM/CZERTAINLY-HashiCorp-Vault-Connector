@@ -2,7 +2,10 @@ package authority
 
 import (
 	"context"
+	"errors"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/db"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
+	"go.uber.org/zap"
 	"net/http"
 	"testing"
 )
@@ -97,6 +100,42 @@ func TestRAProfileCallbackRejectsInvalidEnginePath(t *testing.T) {
 	}
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("response code = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+}
+
+func TestSigningOperationsRejectNonPKCS10Format(t *testing.T) {
+	service := &CertificateManagementAPIService{}
+	operations := map[string]func() (model.ImplResponse, error){
+		"issue": func() (model.ImplResponse, error) {
+			return service.IssueCertificate(context.Background(), "authority", model.CertificateSignRequestDto{
+				CertificateRequestFormat: "",
+			})
+		},
+		"renew": func() (model.ImplResponse, error) {
+			return service.RenewCertificate(context.Background(), "authority", model.CertificateRenewRequestDto{
+				CertificateRequestFormat: "",
+			})
+		},
+	}
+
+	for operationName, operation := range operations {
+		t.Run(operationName, func(t *testing.T) {
+			response, err := operation()
+			if err != nil {
+				t.Fatalf("operation returned error: %v", err)
+			}
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("response code = %d, want %d", response.Code, http.StatusBadRequest)
+			}
+			errorResponse, ok := response.Body.(model.ErrorMessageDto)
+			if !ok {
+				t.Fatalf("response body type = %T, want model.ErrorMessageDto", response.Body)
+			}
+			want := "Invalid certificate request format, PKCS#10 format expected."
+			if errorResponse.Message != want {
+				t.Fatalf("response message = %q, want %q", errorResponse.Message, want)
+			}
+		})
 	}
 }
 
@@ -309,5 +348,148 @@ func engineAttribute(data map[string]any) model.RequestAttributeDto {
 		Content: []model.AttributeContent{
 			model.ObjectAttributeContent{Data: data},
 		},
+	}
+}
+
+func roleAttribute(name string) model.RequestAttributeDto {
+	return model.RequestAttributeDto{
+		Uuid: model.RA_PROFILE_ROLE_ATTR,
+		Name: "ra_profile_role",
+		Content: []model.AttributeContent{
+			model.StringAttributeContent{Data: name},
+		},
+	}
+}
+
+func TestNewCertificateManagementAPIService_WiresRepositoryAndLogger(t *testing.T) {
+	repo, err := db.NewAuthorityRepository(nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	logger := zap.NewNop()
+
+	servicer := NewCertificateManagementAPIService(repo, logger)
+
+	service, ok := servicer.(*CertificateManagementAPIService)
+	if !ok {
+		t.Fatalf("type = %T, want *CertificateManagementAPIService", servicer)
+	}
+	if service.authorityRepo != authorityRepository(repo) {
+		t.Error("authorityRepo not wired to the repository passed in")
+	}
+	if service.log != logger {
+		t.Error("log not wired to the logger passed in")
+	}
+}
+
+func TestCertificateManagementServiceNoOpEndpoints_AlwaysReturnOK(t *testing.T) {
+	service := &CertificateManagementAPIService{log: zap.NewNop()}
+	operations := map[string]func() (model.ImplResponse, error){
+		"list issue attributes": func() (model.ImplResponse, error) {
+			return service.ListIssueCertificateAttributes(context.Background(), "authority-uuid")
+		},
+		"list revoke attributes": func() (model.ImplResponse, error) {
+			return service.ListRevokeCertificateAttributes(context.Background(), "authority-uuid")
+		},
+		"validate issue attributes": func() (model.ImplResponse, error) {
+			return service.ValidateIssueCertificateAttributes(context.Background(), "authority-uuid", []model.RequestAttributeDto{{Name: "x"}})
+		},
+		"validate revoke attributes": func() (model.ImplResponse, error) {
+			return service.ValidateRevokeCertificateAttributes(context.Background(), "authority-uuid", []model.RequestAttributeDto{{Name: "x"}})
+		},
+	}
+
+	for name, operation := range operations {
+		t.Run(name, func(t *testing.T) {
+			resp, err := operation()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if resp.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", resp.Code, http.StatusOK)
+			}
+		})
+	}
+}
+
+// certificateOperations returns, for each certificate-management operation
+// that looks up an authority before touching Vault, a closure invoking that
+// operation against service with RA profile attributes sufficient to pass
+// the engine/role resolution and reach findAuthority.
+func certificateOperations(service *CertificateManagementAPIService, uuid string) map[string]func() (model.ImplResponse, error) {
+	engineOnly := []model.Attribute{engineAttribute(map[string]any{"engineName": "pki"})}
+	engineAndRole := []model.Attribute{
+		engineAttribute(map[string]any{"engineName": "pki"}),
+		roleAttribute("server-role"),
+	}
+	return map[string]func() (model.ImplResponse, error){
+		"identify": func() (model.ImplResponse, error) {
+			return service.IdentifyCertificate(context.Background(), uuid, model.CertificateIdentificationRequestDto{
+				RaProfileAttributes: engineOnly,
+			})
+		},
+		"issue": func() (model.ImplResponse, error) {
+			return service.IssueCertificate(context.Background(), uuid, model.CertificateSignRequestDto{
+				CertificateRequestFormat: model.CERTIFICATEREQUESTFORMAT_PKCS10,
+				RaProfileAttributes:      engineAndRole,
+			})
+		},
+		"renew": func() (model.ImplResponse, error) {
+			return service.RenewCertificate(context.Background(), uuid, model.CertificateRenewRequestDto{
+				CertificateRequestFormat: model.CERTIFICATEREQUESTFORMAT_PKCS10,
+				RaProfileAttributes:      engineAndRole,
+			})
+		},
+		"revoke": func() (model.ImplResponse, error) {
+			return service.RevokeCertificate(context.Background(), uuid, model.CertRevocationDto{
+				RaProfileAttributes: engineOnly,
+			})
+		},
+	}
+}
+
+func TestCertificateOperationsService_AuthorityNotFoundReturns404BeforeReachingVault(t *testing.T) {
+	repo := &fakeAuthorityRepository{findByUUIDErr: errors.New("record not found")}
+	service := &CertificateManagementAPIService{authorityRepo: repo, log: zap.NewNop()}
+
+	for name, operation := range certificateOperations(service, "missing-uuid") {
+		t.Run(name, func(t *testing.T) {
+			resp, err := operation()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if resp.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d", resp.Code, http.StatusNotFound)
+			}
+			body, ok := resp.Body.(model.ErrorMessageDto)
+			if !ok {
+				t.Fatalf("body type = %T, want model.ErrorMessageDto", resp.Body)
+			}
+			if body.Message != "Authority not found" {
+				t.Errorf("message = %q, want %q", body.Message, "Authority not found")
+			}
+		})
+	}
+}
+
+func TestCertificateOperationsService_VaultConnectFailureReturns500(t *testing.T) {
+	repo := &fakeAuthorityRepository{findByUUID: &db.AuthorityInstance{
+		UUID: "authority-uuid", URL: unreachableVaultURL, CredentialType: model.JWTOIDC_CRED,
+	}}
+	service := &CertificateManagementAPIService{authorityRepo: repo, log: zap.NewNop()}
+
+	for name, operation := range certificateOperations(service, "authority-uuid") {
+		t.Run(name, func(t *testing.T) {
+			resp, err := operation()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if resp.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want %d; body=%+v", resp.Code, http.StatusInternalServerError, resp.Body)
+			}
+			if _, ok := resp.Body.(model.ErrorMessageDto); !ok {
+				t.Fatalf("body type = %T, want model.ErrorMessageDto", resp.Body)
+			}
+		})
 	}
 }
