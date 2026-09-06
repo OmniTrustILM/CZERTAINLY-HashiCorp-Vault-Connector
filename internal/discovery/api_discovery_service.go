@@ -8,7 +8,6 @@ import (
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/utils"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/vault"
 	"net/http"
-	"strings"
 
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
 	vault2 "github.com/hashicorp/vault-client-go"
@@ -114,14 +113,10 @@ func (s *DiscoveryAPIService) DiscoverCertificate(ctx context.Context, discovery
 			s.failDiscovery(ctx, discovery, err.Error())
 			return model.Response(http.StatusBadRequest, model.ErrorMessageDto{Message: "Unable to create vault client"}), nil
 		}
-		ctx := context.Background()
-		//Due to the nature of its intended usage, there is no guarantee on backwards compatibility for this endpoint.
-		mounts, _ := client.System.InternalUiListEnabledVisibleMounts(ctx)
-		for engineName, engineData := range mounts.Data.Secret {
-			engineName = strings.TrimSuffix(engineName, "/")
-			if engineData.(map[string]any)["type"] == "pki" {
-				enginesList = append(enginesList, engineName)
-			}
+		enginesList, err = vault.ListPkiEngineNames(ctx, client)
+		if err != nil {
+			s.failDiscovery(ctx, discovery, "Failed to list the PKI engines of the vault")
+			return model.Response(http.StatusBadRequest, model.ErrorMessageDto{Message: "Unable to list the PKI engines of the vault"}), nil
 		}
 	} else {
 		enginesList = make([]string, 0)

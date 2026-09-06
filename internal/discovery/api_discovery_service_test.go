@@ -214,3 +214,49 @@ func TestDiscoverCertificateReportsAnUnreachableVaultWhenNoEnginesAreGiven(t *te
 		t.Error("expected the failed discovery to be persisted")
 	}
 }
+
+func TestPkiEnginesCallbackReportsAVaultThatCannotListMounts(t *testing.T) {
+	stub := newVaultStub(t, true)
+	authorities := &fakeAuthorityRepository{findByUUID: newStubAuthority(stub.URL)}
+	service := &ConnectorAttributesAPIService{authorityRepo: authorities, log: zap.NewNop()}
+
+	response, err := service.PkiEnginesCallback(context.Background(), "authority-uuid")
+
+	if response.Code != http.StatusInternalServerError {
+		t.Errorf("code: got %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+	if err == nil {
+		t.Error("expected the listing error to be returned alongside the response")
+	}
+}
+
+func TestDiscoverCertificateReportsAVaultThatCannotListMounts(t *testing.T) {
+	stub := newVaultStub(t, true)
+	discoveries := &fakeDiscoveryRepository{}
+	authorities := &fakeAuthorityRepository{findByUUID: newStubAuthority(stub.URL)}
+	service := &DiscoveryAPIService{discoveryRepo: discoveries, authorityRepo: authorities, log: zap.NewNop()}
+
+	request := model.DiscoveryRequestDto{
+		Name: "example-discovery",
+		Attributes: []model.Attribute{
+			model.DataAttribute{
+				Uuid: model.DISCOVERY_AUTHORITY_ATTR,
+				Content: []model.AttributeContent{
+					model.ObjectAttributeContent{Data: map[string]any{"uuid": "authority-uuid"}},
+				},
+			},
+		},
+	}
+
+	response, err := service.DiscoverCertificate(context.Background(), request)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if response.Code != http.StatusBadRequest {
+		t.Errorf("code: got %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	if len(discoveries.updateCalls) == 0 {
+		t.Error("expected the failed discovery to be persisted")
+	}
+}
