@@ -75,7 +75,7 @@ func (f *fakeAuthorityManagementAPIServicer) UpdateAuthorityInstance(_ context.C
 	return f.record("UpdateAuthorityInstance", uuid, dto)
 }
 
-func (f *fakeAuthorityManagementAPIServicer) ValidateRAProfileAttributes(_ context.Context, uuid string, attrs []model.RequestAttributeDto) (model.ImplResponse, error) {
+func (f *fakeAuthorityManagementAPIServicer) ValidateRAProfileAttributes(_ context.Context, uuid string, attrs []model.Attribute) (model.ImplResponse, error) {
 	return f.record("ValidateRAProfileAttributes", uuid, attrs)
 }
 
@@ -271,8 +271,7 @@ func TestAuthorityManagementBodyHandlers_UnreadableBodyRejectsBeforeReachingServ
 func TestAuthorityManagementHandlers_RejectsWhenTopLevelRequiredFieldMissing(t *testing.T) {
 	// Only CreateAuthorityInstance, GetCaCertificates and GetCrl assert their decoded body's
 	// required fields; UpdateAuthorityInstance and ValidateRAProfileAttributes do not (see
-	// TestUpdateAuthorityInstanceHandler_DoesNotValidateRequestBody and
-	// TestValidateRAProfileAttributesHandler_IgnoresRequestBodyAttributes).
+	// bugfix_test.go).
 	cases := []struct {
 		route     string
 		uuid      string
@@ -444,17 +443,17 @@ var authorityHandlerCases = []authorityHandlerCase{
 		route:  "ValidateRAProfileAttributes",
 		method: http.MethodPost,
 		uuid:   "authority-uuid",
-		body:   `[{"name":"x","content":[{}]}]`,
+		body:   `[{"name":"ra_profile_engine","content":[{"data":"team/pki"}]}]`,
 		checkBody: func(t *testing.T, body any) {
-			attrs, ok := body.([]model.RequestAttributeDto)
+			attrs, ok := body.([]model.Attribute)
 			if !ok {
-				t.Fatalf("body type = %T, want []model.RequestAttributeDto", body)
+				t.Fatalf("body type = %T, want []model.Attribute", body)
 			}
-			// See TestValidateRAProfileAttributesHandler_IgnoresRequestBodyAttributes: the
-			// handler discards model.UnmarshalAttributesValues' result, so the service
-			// always receives an empty slice regardless of the request body.
-			if len(attrs) != 0 {
-				t.Errorf("attrs = %+v, want empty (body is currently ignored)", attrs)
+			if len(attrs) != 1 {
+				t.Fatalf("attrs = %+v, want the one attribute from the request body", attrs)
+			}
+			if got := attrs[0].GetName(); got != "ra_profile_engine" {
+				t.Errorf("name = %q, want %q", got, "ra_profile_engine")
 			}
 		},
 	},
@@ -540,59 +539,5 @@ func TestAuthorityManagementHandlers_PropagateServiceErrorAsHTTPResponse(t *test
 				t.Fatalf("service calls = %d, want 1: %+v", len(fake.calls), fake.calls)
 			}
 		})
-	}
-}
-
-// TestValidateRAProfileAttributesHandler_IgnoresRequestBodyAttributes characterizes existing
-// (pre-existing, not introduced here) behavior: the handler calls
-// model.UnmarshalAttributesValues(jsonContent) but never assigns the result to
-// requestAttributeDtoParam, so the service always receives an empty attribute list no matter
-// what the request body contains.
-func TestValidateRAProfileAttributesHandler_IgnoresRequestBodyAttributes(t *testing.T) {
-	fake := &fakeAuthorityManagementAPIServicer{resp: model.ImplResponse{Code: http.StatusOK, Body: "ok"}}
-	controller := NewAuthorityManagementAPIController(fake)
-	rec := httptest.NewRecorder()
-	req := newAuthorityRequest(http.MethodPost, "authority-uuid", "", strings.NewReader(`[{"name":"x","content":[{}]}]`))
-
-	controller.Routes()["ValidateRAProfileAttributes"].HandlerFunc(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-	if len(fake.calls) != 1 {
-		t.Fatalf("service calls = %d, want 1", len(fake.calls))
-	}
-	attrs, ok := fake.calls[0].body.([]model.RequestAttributeDto)
-	if !ok {
-		t.Fatalf("body type = %T, want []model.RequestAttributeDto", fake.calls[0].body)
-	}
-	if len(attrs) != 0 {
-		t.Errorf("attrs = %+v, want empty", attrs)
-	}
-}
-
-// TestUpdateAuthorityInstanceHandler_DoesNotValidateRequestBody characterizes existing
-// behavior: unlike CreateAuthorityInstance, UpdateAuthorityInstance never asserts the decoded
-// DTO's required fields, so an empty body reaches the service rather than being rejected.
-func TestUpdateAuthorityInstanceHandler_DoesNotValidateRequestBody(t *testing.T) {
-	fake := &fakeAuthorityManagementAPIServicer{resp: model.ImplResponse{Code: http.StatusOK, Body: "ok"}}
-	controller := NewAuthorityManagementAPIController(fake)
-	rec := httptest.NewRecorder()
-	req := newAuthorityRequest(http.MethodPost, "authority-uuid", "", strings.NewReader(`{}`))
-
-	controller.Routes()["UpdateAuthorityInstance"].HandlerFunc(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
-	}
-	if len(fake.calls) != 1 {
-		t.Fatalf("service calls = %d, want 1", len(fake.calls))
-	}
-	dto, ok := fake.calls[0].body.(model.AuthorityProviderInstanceRequestDto)
-	if !ok {
-		t.Fatalf("body type = %T, want model.AuthorityProviderInstanceRequestDto", fake.calls[0].body)
-	}
-	if dto.Name != "" || dto.Kind != "" {
-		t.Errorf("dto = %+v, want zero value", dto)
 	}
 }

@@ -141,14 +141,12 @@ func (s *AuthorityManagementAPIService) GetCaCertificates(ctx context.Context, u
 
 // GetConnection - Connect to Authority
 func (s *AuthorityManagementAPIService) GetConnection(ctx context.Context, uuid string) (model.ImplResponse, error) {
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: "Failed to marshal attributes",
-		}), err
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
 
-	_, err = vault.GetClient(*authority)
+	_, err := vault.GetClient(*authority)
 	if err != nil {
 		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
 			Message: "Failed to connect to vault",
@@ -213,7 +211,12 @@ func (s *AuthorityManagementAPIService) GetCrl(ctx context.Context, uuid string,
 
 // ListAuthorityInstances - List Authority instances
 func (s *AuthorityManagementAPIService) ListAuthorityInstances(ctx context.Context) (model.ImplResponse, error) {
-	authorities, _ := s.authorityRepo.ListAuthorityInstances()
+	authorities, err := s.authorityRepo.ListAuthorityInstances()
+	if err != nil {
+		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
+			Message: "Failed to list authority instances",
+		}), nil
+	}
 	var authoritiesDto []model.AuthorityProviderInstanceDto
 	for _, authority := range authorities {
 		attributes := model.UnmarshalAttributes([]byte(authority.Attributes))
@@ -295,11 +298,9 @@ func (s *AuthorityManagementAPIService) RemoveAuthorityInstance(ctx context.Cont
 
 // UpdateAuthorityInstance - Update Authority instance
 func (s *AuthorityManagementAPIService) UpdateAuthorityInstance(ctx context.Context, uuid string, request model.AuthorityProviderInstanceRequestDto) (model.ImplResponse, error) {
-	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
-	if err != nil {
-		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
-			Message: "Failed to marshal attributes",
-		}), err
+	authority, errResp := findAuthority(s.authorityRepo, uuid)
+	if errResp != nil {
+		return *errResp, nil
 	}
 	attributes := request.Attributes
 	URL := model.GetAttributeFromArrayByUUID(model.AUTHORITY_URL_ATTR, attributes).GetContent()[0].GetData().(string)
@@ -348,7 +349,7 @@ func (s *AuthorityManagementAPIService) UpdateAuthorityInstance(ctx context.Cont
 }
 
 // ValidateRAProfileAttributes - Validate RA Profile attributes
-func (s *AuthorityManagementAPIService) ValidateRAProfileAttributes(ctx context.Context, uuid string, requestAttributeDto []model.RequestAttributeDto) (model.ImplResponse, error) {
+func (s *AuthorityManagementAPIService) ValidateRAProfileAttributes(ctx context.Context, uuid string, attributes []model.Attribute) (model.ImplResponse, error) {
 	s.log.With(zax.Get(ctx)...).Info("Validating RA Profile attributes", zap.String("uuid", uuid))
 	return model.Response(http.StatusOK, nil), nil
 }

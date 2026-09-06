@@ -102,9 +102,7 @@ func TestListAuthorityInstancesService(t *testing.T) {
 	})
 
 	// Characterizes existing behavior: ListAuthorityInstances discards the
-	// repository's error (`authorities, _ := s.authorityRepo.ListAuthorityInstances()`),
-	// so a repository failure is indistinguishable from an empty result.
-	t.Run("repository error is silently treated as an empty list", func(t *testing.T) {
+	t.Run("repository error is surfaced", func(t *testing.T) {
 		repo := &fakeAuthorityRepository{listErr: errors.New("db unavailable")}
 		service := &AuthorityManagementAPIService{authorityRepo: repo, log: zap.NewNop()}
 
@@ -113,15 +111,11 @@ func TestListAuthorityInstancesService(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if resp.Code != http.StatusOK {
-			t.Fatalf("status = %d, want %d (the repository error is not surfaced)", resp.Code, http.StatusOK)
+		if resp.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want %d", resp.Code, http.StatusInternalServerError)
 		}
-		dtos, ok := resp.Body.([]model.AuthorityProviderInstanceDto)
-		if !ok {
-			t.Fatalf("body type = %T, want []model.AuthorityProviderInstanceDto", resp.Body)
-		}
-		if len(dtos) != 0 {
-			t.Errorf("dtos = %+v, want empty", dtos)
+		if _, ok := resp.Body.(model.ErrorMessageDto); !ok {
+			t.Errorf("body = %T, want model.ErrorMessageDto", resp.Body)
 		}
 	})
 }
@@ -196,17 +190,17 @@ func TestUpdateAuthorityInstanceService(t *testing.T) {
 		},
 	}
 
-	t.Run("not found returns 500 without updating", func(t *testing.T) {
+	t.Run("not found returns 404 without updating", func(t *testing.T) {
 		repo := &fakeAuthorityRepository{findByUUIDErr: errors.New("record not found")}
 		service := &AuthorityManagementAPIService{authorityRepo: repo, log: zap.NewNop()}
 
 		resp, err := service.UpdateAuthorityInstance(context.Background(), "missing-uuid", model.AuthorityProviderInstanceRequestDto{})
 
-		if err == nil {
-			t.Fatal("expected an error")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-		if resp.Code != http.StatusInternalServerError {
-			t.Fatalf("status = %d, want %d", resp.Code, http.StatusInternalServerError)
+		if resp.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want %d", resp.Code, http.StatusNotFound)
 		}
 		if len(repo.updateCalls) != 0 {
 			t.Errorf("UpdateAuthorityInstance should not have been called, got %+v", repo.updateCalls)
@@ -290,7 +284,7 @@ func TestNewAuthorityManagementAPIService_WiresRepositoryAndLogger(t *testing.T)
 func TestValidateRAProfileAttributesService_AlwaysReturnsOK(t *testing.T) {
 	service := &AuthorityManagementAPIService{log: zap.NewNop()}
 
-	resp, err := service.ValidateRAProfileAttributes(context.Background(), "authority-uuid", []model.RequestAttributeDto{{Name: "x"}})
+	resp, err := service.ValidateRAProfileAttributes(context.Background(), "authority-uuid", []model.Attribute{model.RequestAttributeDto{Name: "x"}})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -330,17 +324,17 @@ func TestCreateAuthorityInstanceService_VaultConnectFailureRejectsBeforeCreating
 }
 
 func TestGetConnectionService(t *testing.T) {
-	t.Run("not found returns 500", func(t *testing.T) {
+	t.Run("not found returns 404", func(t *testing.T) {
 		repo := &fakeAuthorityRepository{findByUUIDErr: errors.New("record not found")}
 		service := &AuthorityManagementAPIService{authorityRepo: repo, log: zap.NewNop()}
 
 		resp, err := service.GetConnection(context.Background(), "missing-uuid")
 
-		if err == nil {
-			t.Fatal("expected an error")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-		if resp.Code != http.StatusInternalServerError {
-			t.Fatalf("status = %d, want %d", resp.Code, http.StatusInternalServerError)
+		if resp.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want %d", resp.Code, http.StatusNotFound)
 		}
 	})
 
