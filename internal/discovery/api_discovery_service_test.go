@@ -166,3 +166,51 @@ func TestDiscoveryCertificatesReportsAnEngineThatCannotBeListed(t *testing.T) {
 		t.Error("expected the discovery to be persisted")
 	}
 }
+
+// fakeAuthorityRepository is an in-memory stand-in for
+// *db.AuthorityRepository.
+type fakeAuthorityRepository struct {
+	findByUUID *db.AuthorityInstance
+}
+
+func (f *fakeAuthorityRepository) FindAuthorityInstanceByUUID(uuid string) (*db.AuthorityInstance, error) {
+	if f.findByUUID != nil {
+		return f.findByUUID, nil
+	}
+	return nil, errors.New("fakeAuthorityRepository: FindAuthorityInstanceByUUID not configured for this test")
+}
+
+func (f *fakeAuthorityRepository) ListAuthorityInstances() ([]*db.AuthorityInstance, error) {
+	return nil, errors.New("fakeAuthorityRepository: ListAuthorityInstances not configured for this test")
+}
+
+func TestDiscoverCertificateReportsAnUnreachableVaultWhenNoEnginesAreGiven(t *testing.T) {
+	stub := newVaultStub(t, false)
+	discoveries := &fakeDiscoveryRepository{}
+	authorities := &fakeAuthorityRepository{findByUUID: newStubAuthority(stub.URL)}
+	service := &DiscoveryAPIService{discoveryRepo: discoveries, authorityRepo: authorities, log: zap.NewNop()}
+
+	request := model.DiscoveryRequestDto{
+		Name: "example-discovery",
+		Attributes: []model.Attribute{
+			model.DataAttribute{
+				Uuid: model.DISCOVERY_AUTHORITY_ATTR,
+				Content: []model.AttributeContent{
+					model.ObjectAttributeContent{Data: map[string]any{"uuid": "authority-uuid"}},
+				},
+			},
+		},
+	}
+
+	response, err := service.DiscoverCertificate(context.Background(), request)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if response.Code != http.StatusBadRequest {
+		t.Errorf("code: got %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	if len(discoveries.updateCalls) == 0 {
+		t.Error("expected the failed discovery to be persisted")
+	}
+}

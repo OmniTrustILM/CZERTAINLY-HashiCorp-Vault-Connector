@@ -2,10 +2,17 @@ package authority
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/db"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
@@ -54,8 +61,51 @@ func newStubAuthority(url string) *db.AuthorityInstance {
 // TestServicesReportVaultRejections drives every operation that reaches Vault
 // past the connection step, so that the request path and its error handling
 // both run against a Vault that refuses the call.
+// selfSignedCertificateB64 returns a base64-encoded DER certificate, which the
+// certificate operations decode before they reach Vault.
+func selfSignedCertificateB64(t *testing.T) string {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1234),
+		Subject:      pkix.Name{CommonName: "certificate.example.com"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(der)
+}
+
+// certificateRequestB64 returns a base64-encoded DER certificate request, in
+// the form the issue and renew operations expect.
+func certificateRequestB64(t *testing.T) string {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	csr, err := x509.CreateCertificateRequest(rand.Reader,
+		&x509.CertificateRequest{Subject: pkix.Name{CommonName: "request.example.com"}}, key)
+	if err != nil {
+		t.Fatalf("create certificate request: %v", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(csr)
+}
+
 func TestServicesReportVaultRejections(t *testing.T) {
 	stub := newVaultStub(t)
+	certificate := selfSignedCertificateB64(t)
+	request := certificateRequestB64(t)
 	attributes := []model.Attribute{
 		engineAttribute(map[string]any{"engineName": "pki"}),
 		roleAttribute("web"),
@@ -90,17 +140,20 @@ func TestServicesReportVaultRejections(t *testing.T) {
 		"identify certificate": func() (model.ImplResponse, error) {
 			return certificateService.IdentifyCertificate(context.Background(), "authority-uuid", model.CertificateIdentificationRequestDto{
 				RaProfileAttributes: attributes,
+				Certificate:         certificate,
 			})
 		},
 		"issue certificate": func() (model.ImplResponse, error) {
 			return certificateService.IssueCertificate(context.Background(), "authority-uuid", model.CertificateSignRequestDto{
 				CertificateRequestFormat: model.CERTIFICATEREQUESTFORMAT_PKCS10,
 				RaProfileAttributes:      attributes,
+				Request:                  request,
 			})
 		},
 		"revoke certificate": func() (model.ImplResponse, error) {
 			return certificateService.RevokeCertificate(context.Background(), "authority-uuid", model.CertRevocationDto{
 				RaProfileAttributes: attributes,
+				Certificate:         certificate,
 			})
 		},
 	}

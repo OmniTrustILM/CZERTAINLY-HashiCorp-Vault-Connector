@@ -111,12 +111,7 @@ func (s *DiscoveryAPIService) DiscoverCertificate(ctx context.Context, discovery
 		// get the vault client
 		client, err := vault.GetClient(*authority)
 		if err != nil {
-			discovery.Status = "FAILED"
-			err := s.discoveryRepo.UpdateDiscovery(discovery)
-			if err != nil {
-				s.log.With(logger.Fields(ctx)...).Error(err.Error())
-			}
-			s.log.With(logger.Fields(ctx)...).Error(err.Error())
+			s.failDiscovery(ctx, discovery, err.Error())
 			return model.Response(http.StatusBadRequest, model.ErrorMessageDto{Message: "Unable to create vault client"}), nil
 		}
 		ctx := context.Background()
