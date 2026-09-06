@@ -16,7 +16,7 @@ import (
 // This service should implement the business logic for every endpoint for the ConnectorAttributesAPI API.
 // Include any external packages or services that will be required by this service.
 type ConnectorAttributesAPIService struct {
-	authorityRepo *db.AuthorityRepository
+	authorityRepo authorityRepository
 	log           *zap.Logger
 }
 
@@ -92,23 +92,11 @@ func (s *ConnectorAttributesAPIService) PkiEnginesCallback(ctx context.Context, 
 			Message: "Failed to create vault client",
 		}), err
 	}
-	//Due to the nature of its intended usage, there is no guarantee on backwards compatibility for this endpoint.
-	mounts, _ := client.System.InternalUiListEnabledVisibleMounts(ctx)
-	var engineList []model.AttributeContent
-	for engineName, engineData := range mounts.Data.Secret {
-		engineName = strings.TrimSuffix(engineName, "/")
-		if engineData.(map[string]any)["type"] == "pki" {
-
-			engineDataObject := make(map[string]any)
-			engineDataObject["engineName"] = engineName
-			engineDataObject["engineAccesor"] = engineData.(map[string]any)["accessor"]
-			engineDataObject["runningPluginVersion"] = engineData.(map[string]any)["running_plugin_version"]
-
-			engineList = append(engineList, model.ObjectAttributeContent{
-				Reference: engineName,
-				Data:      engineDataObject,
-			})
-		}
+	engineList, err := vault.ListPkiEngines(ctx, client)
+	if err != nil {
+		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
+			Message: "Failed to list the PKI engines of the vault",
+		}), err
 	}
 	return model.Response(http.StatusOK, engineList), nil
 }

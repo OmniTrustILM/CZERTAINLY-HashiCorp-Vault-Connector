@@ -10,7 +10,6 @@ import (
 	vault2 "github.com/hashicorp/vault-client-go"
 	"go.uber.org/zap"
 	"net/http"
-	"strings"
 )
 
 // AuthorityManagementAPIService is a service that implements the logic for the AuthorityManagementAPIServicer
@@ -242,23 +241,11 @@ func (s *AuthorityManagementAPIService) ListRAProfileAttributes(ctx context.Cont
 			Message: "Failed to create vault client",
 		}), err
 	}
-	//Due to the nature of its intended usage, there is no guarantee on backwards compatibility for this endpoint.
-	mounts, _ := client.System.InternalUiListEnabledVisibleMounts(ctx)
-	var engineList []model.AttributeContent
-	for engineName, engineData := range mounts.Data.Secret {
-		engineName = strings.TrimSuffix(engineName, "/")
-		if engineData.(map[string]any)["type"] == "pki" {
-
-			engineDataObject := make(map[string]any)
-			engineDataObject["engineName"] = engineName
-			engineDataObject["engineAccesor"] = engineData.(map[string]any)["accessor"]
-			engineDataObject["runningPluginVersion"] = engineData.(map[string]any)["running_plugin_version"]
-
-			engineList = append(engineList, model.ObjectAttributeContent{
-				Reference: engineName,
-				Data:      engineDataObject,
-			})
-		}
+	engineList, err := vault.ListPkiEngines(ctx, client)
+	if err != nil {
+		return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
+			Message: "Failed to list the PKI engines of the vault",
+		}), err
 	}
 	var resultAttributes []model.Attribute
 	attribute := model.GetAttributeDefByUUID(model.RA_PROFILE_ENGINE_ATTR).(model.DataAttribute)

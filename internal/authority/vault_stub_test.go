@@ -168,3 +168,18 @@ func TestServicesReportVaultRejections(t *testing.T) {
 		})
 	}
 }
+
+func TestListRAProfileAttributesReportsAVaultThatCannotListMounts(t *testing.T) {
+	stub := newVaultStub(t)
+	repo := &fakeAuthorityRepository{findByUUID: newStubAuthority(stub.URL)}
+	service := &AuthorityManagementAPIService{authorityRepo: repo, log: zap.NewNop()}
+
+	response, err := service.ListRAProfileAttributes(context.Background(), "authority-uuid")
+
+	if response.Code != http.StatusInternalServerError {
+		t.Errorf("code: got %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+	if err == nil {
+		t.Error("expected the listing error to be returned alongside the response")
+	}
+}
