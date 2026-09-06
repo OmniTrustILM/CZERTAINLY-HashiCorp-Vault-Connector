@@ -5,9 +5,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 : "${SONAR_TOKEN:?SONAR_TOKEN must be set}"
-# Capture the token and remove it from the ambient environment immediately:
-# go test and golangci-lint can execute PR-controlled code (test code, lint
-# plugins/analyzers) and must not be able to read or exfiltrate SONAR_TOKEN.
+# Keep the token out of the ambient environment for the test and lint steps,
+# which execute code from the checkout. This narrows accidental exposure; it is
+# not a boundary against hostile code running as the same user, so do not run
+# this against a checkout you do not trust.
 _sonar_token="$SONAR_TOKEN"
 unset SONAR_TOKEN
 
