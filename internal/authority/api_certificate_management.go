@@ -10,6 +10,18 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// requireUUIDParam extracts the "uuid" path parameter, writing the standard
+// required-field error through errorHandler when it is missing. Every
+// handler below needs this same check before it can do anything else.
+func requireUUIDParam(w http.ResponseWriter, r *http.Request, errorHandler model.ErrorHandler) (string, bool) {
+	uuidParam := mux.Vars(r)["uuid"]
+	if uuidParam == "" {
+		errorHandler(w, r, &model.RequiredError{Field: "uuid"}, nil)
+		return "", false
+	}
+	return uuidParam, true
+}
+
 // CertificateManagementAPIController binds http requests to an api service and writes the service results to the http response
 type CertificateManagementAPIController struct {
 	service      CertificateManagementAPIServicer
@@ -88,10 +100,8 @@ func (c *CertificateManagementAPIController) Routes() model.Routes {
 
 // IdentifyCertificate - Identify Certificate
 func (c *CertificateManagementAPIController) IdentifyCertificate(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	uuidParam := params["uuid"]
-	if uuidParam == "" {
-		c.errorHandler(w, r, &model.RequiredError{Field: "uuid"}, nil)
+	uuidParam, ok := requireUUIDParam(w, r, c.errorHandler)
+	if !ok {
 		return
 	}
 	certificateIdentificationRequestDtoParam := model.CertificateIdentificationRequestDto{}
@@ -125,10 +135,8 @@ func (c *CertificateManagementAPIController) IdentifyCertificate(w http.Response
 
 // IssueCertificate - Issue Certificate
 func (c *CertificateManagementAPIController) IssueCertificate(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	uuidParam := params["uuid"]
-	if uuidParam == "" {
-		c.errorHandler(w, r, &model.RequiredError{Field: "uuid"}, nil)
+	uuidParam, ok := requireUUIDParam(w, r, c.errorHandler)
+	if !ok {
 		return
 	}
 	certificateSignRequestDtoParam := model.CertificateSignRequestDto{}
@@ -162,10 +170,8 @@ func (c *CertificateManagementAPIController) IssueCertificate(w http.ResponseWri
 
 // ListIssueCertificateAttributes - List of Attributes to issue Certificate
 func (c *CertificateManagementAPIController) ListIssueCertificateAttributes(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	uuidParam := params["uuid"]
-	if uuidParam == "" {
-		c.errorHandler(w, r, &model.RequiredError{Field: "uuid"}, nil)
+	uuidParam, ok := requireUUIDParam(w, r, c.errorHandler)
+	if !ok {
 		return
 	}
 	result, err := c.service.ListIssueCertificateAttributes(r.Context(), uuidParam)
@@ -183,10 +189,8 @@ func (c *CertificateManagementAPIController) ListIssueCertificateAttributes(w ht
 
 // ListRevokeCertificateAttributes - List of Attributes to revoke Certificate
 func (c *CertificateManagementAPIController) ListRevokeCertificateAttributes(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	uuidParam := params["uuid"]
-	if uuidParam == "" {
-		c.errorHandler(w, r, &model.RequiredError{Field: "uuid"}, nil)
+	uuidParam, ok := requireUUIDParam(w, r, c.errorHandler)
+	if !ok {
 		return
 	}
 	result, err := c.service.ListRevokeCertificateAttributes(r.Context(), uuidParam)
@@ -204,10 +208,8 @@ func (c *CertificateManagementAPIController) ListRevokeCertificateAttributes(w h
 
 // RenewCertificate - Renew Certificate
 func (c *CertificateManagementAPIController) RenewCertificate(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	uuidParam := params["uuid"]
-	if uuidParam == "" {
-		c.errorHandler(w, r, &model.RequiredError{Field: "uuid"}, nil)
+	uuidParam, ok := requireUUIDParam(w, r, c.errorHandler)
+	if !ok {
 		return
 	}
 	certificateRenewRequestDtoParam := model.CertificateRenewRequestDto{}
@@ -241,10 +243,8 @@ func (c *CertificateManagementAPIController) RenewCertificate(w http.ResponseWri
 
 // RevokeCertificate - Revoke Certificate
 func (c *CertificateManagementAPIController) RevokeCertificate(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	uuidParam := params["uuid"]
-	if uuidParam == "" {
-		c.errorHandler(w, r, &model.RequiredError{Field: "uuid"}, nil)
+	uuidParam, ok := requireUUIDParam(w, r, c.errorHandler)
+	if !ok {
 		return
 	}
 	certRevocationDtoParam := model.CertRevocationDto{}
@@ -278,10 +278,8 @@ func (c *CertificateManagementAPIController) RevokeCertificate(w http.ResponseWr
 
 // ValidateIssueCertificateAttributes - Validate list of Attributes to issue Certificate
 func (c *CertificateManagementAPIController) ValidateIssueCertificateAttributes(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	uuidParam := params["uuid"]
-	if uuidParam == "" {
-		c.errorHandler(w, r, &model.RequiredError{Field: "uuid"}, nil)
+	uuidParam, ok := requireUUIDParam(w, r, c.errorHandler)
+	if !ok {
 		return
 	}
 	var requestAttributeDtoParam []model.RequestAttributeDto
@@ -312,10 +310,8 @@ func (c *CertificateManagementAPIController) ValidateIssueCertificateAttributes(
 
 // ValidateRevokeCertificateAttributes - Validate list of Attributes to revoke certificate
 func (c *CertificateManagementAPIController) ValidateRevokeCertificateAttributes(w http.ResponseWriter, r *http.Request) {
-	params := mux.Vars(r)
-	uuidParam := params["uuid"]
-	if uuidParam == "" {
-		c.errorHandler(w, r, &model.RequiredError{Field: "uuid"}, nil)
+	uuidParam, ok := requireUUIDParam(w, r, c.errorHandler)
+	if !ok {
 		return
 	}
 	var requestAttributeDtoParam []model.RequestAttributeDto

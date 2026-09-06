@@ -100,6 +100,42 @@ func TestRAProfileCallbackRejectsInvalidEnginePath(t *testing.T) {
 	}
 }
 
+func TestSigningOperationsRejectNonPKCS10Format(t *testing.T) {
+	service := &CertificateManagementAPIService{}
+	operations := map[string]func() (model.ImplResponse, error){
+		"issue": func() (model.ImplResponse, error) {
+			return service.IssueCertificate(context.Background(), "authority", model.CertificateSignRequestDto{
+				CertificateRequestFormat: "",
+			})
+		},
+		"renew": func() (model.ImplResponse, error) {
+			return service.RenewCertificate(context.Background(), "authority", model.CertificateRenewRequestDto{
+				CertificateRequestFormat: "",
+			})
+		},
+	}
+
+	for operationName, operation := range operations {
+		t.Run(operationName, func(t *testing.T) {
+			response, err := operation()
+			if err != nil {
+				t.Fatalf("operation returned error: %v", err)
+			}
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("response code = %d, want %d", response.Code, http.StatusBadRequest)
+			}
+			errorResponse, ok := response.Body.(model.ErrorMessageDto)
+			if !ok {
+				t.Fatalf("response body type = %T, want model.ErrorMessageDto", response.Body)
+			}
+			want := "Invalid certificate request format, PKCS#10 format expected."
+			if errorResponse.Message != want {
+				t.Fatalf("response message = %q, want %q", errorResponse.Message, want)
+			}
+		})
+	}
+}
+
 func TestSigningOperationsRejectInvalidRAProfileRole(t *testing.T) {
 	service := &CertificateManagementAPIService{}
 	invalidRoles := map[string]model.AttributeContent{
