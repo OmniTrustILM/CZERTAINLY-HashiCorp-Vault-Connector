@@ -17,7 +17,6 @@ permissions:
 jobs:
   test:
     uses: OmniTrustILM/.github/.github/workflows/containers-test.yml@main
-    secrets: inherit
     with:
       image: ilm/hashicorp-vault-connector
       cache-scope: hashicorp-vault-connector
