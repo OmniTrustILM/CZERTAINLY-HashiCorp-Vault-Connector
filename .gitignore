@@ -37,3 +37,12 @@ setenv.sh
 
 .mirrord/
 .worktrees/
+
+### Go build and analysis output ###
+coverage.out
+coverage.html
+golangci-lint-report.xml
+.scannerwork/
+
+### Local working documents ###
+docs/superpowers/

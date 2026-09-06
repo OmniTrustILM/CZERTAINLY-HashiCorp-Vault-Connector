@@ -307,13 +307,13 @@ func getRAProfilesAttributes() []Attribute {
 			Content:     nil,
 			ContentType: OBJECT,
 			Properties: &DataAttributeProperties{
-				Label:          "PKI secret engine",
-				Visible:        true,
-				Group:          "",
-				Required:       true,
-				ReadOnly:       false,
-				List:           true,
-				MultiSelect:    false,
+				Label:       "PKI secret engine",
+				Visible:     true,
+				Group:       "",
+				Required:    true,
+				ReadOnly:    false,
+				List:        true,
+				MultiSelect: false,
 				// Workaround for OmniTrustILM/core#1804: core's strict list validation
 				// rejects valid OBJECT content. Revert once core#1804 is fixed.
 				ExtensibleList: true,
@@ -344,13 +344,13 @@ func getRAProfilesAttributes() []Attribute {
 			Content:     nil,
 			ContentType: STRING,
 			Properties: &DataAttributeProperties{
-				Label:          "Role",
-				Visible:        true,
-				Group:          "",
-				Required:       true,
-				ReadOnly:       false,
-				List:           true,
-				MultiSelect:    false,
+				Label:       "Role",
+				Visible:     true,
+				Group:       "",
+				Required:    true,
+				ReadOnly:    false,
+				List:        true,
+				MultiSelect: false,
 				// Workaround for OmniTrustILM/core#1804: core's strict list validation
 				// rejects valid OBJECT content. Revert once core#1804 is fixed.
 				ExtensibleList: true,

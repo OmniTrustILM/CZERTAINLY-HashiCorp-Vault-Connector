@@ -2,69 +2,44 @@ name: Build
 
 on:
   push:
-    paths-ignore:
-      - 'deploy/charts/**'
-    branches: [ "main" ]
-
-# Cancel in-progress runs of the same workflow on the same branch
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-build
-  cancel-in-progress: true
+    branches: [main]
+  pull_request:
 
 permissions:
   contents: read
 
-env:
-  # Change this to your binary name
-  APP_NAME: czertainly-hashicorp-vault-connector
-  # Common build flags
-  GOFLAGS: -trimpath
-  LDFLAGS: -s -w -X "main.version=${{ github.sha }}"
-
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goos: linux   # x86_64
-            goarch: amd64
-            ext: ""
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: '1.26'
-          cache: 'true'
+          go-version-file: go.mod
+          cache: true
 
-      - name: Print Go env
-        run: |
-          go env
-          go version
-          go tool dist list | grep -E '^(linux|darwin|windows)/(amd64|arm64)$' || true
+      - name: go vet
+        run: go vet ./...
 
-      - name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: '0'
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          NAME="${APP_NAME}-${GOOS}-${GOARCH}"
-          BIN="dist/${NAME}${{ matrix.ext }}"
-          echo "Building -> ${BIN}"
-          go build $GOFLAGS -ldflags "$LDFLAGS" -o "$BIN" ./cmd
-          # Ensure executable bit on unix-like targets (Windows ignores it)
-          chmod +x "$BIN" || true
-          ls -lh "$BIN"
+      - name: gofmt
+        run: test -z "$(gofmt -l .)"
 
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
-        env:
-          SONAR_TOKEN:  ${{ secrets.SONAR_TOKEN }}
+      - name: govulncheck
+        # Version is lock-file enforced: the tool directive in go.mod pins
+        # govulncheck and go.sum verifies it (S8545).
+        run: go tool govulncheck ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: coverage.out
+          if-no-files-found: ignore

@@ -1,12 +1,10 @@
-name: Check PR
+name: "Check PR"
 on:
   pull_request:
-    paths-ignore:
-      - 'deploy/charts/**'
-    branches: [main]
+    branches: [main*]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-check
+  group: pr-${{ github.event.pull_request.number || github.ref }}-build-pr
   cancel-in-progress: true
 
 permissions:
@@ -14,48 +12,70 @@ permissions:
 
 jobs:
   check:
-    if: github.event_name != 'push'
     name: Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-      - name: Setup Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version: '1.26'
+          fetch-depth: 0 # full history for better Sonar analysis relevancy
 
-      # Run linting
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Lint. The .golangci.yml checkstyle formatter writes golangci-lint-report.xml,
+      # consumed downstream by the Sonar workflow.
       - name: golangci-lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: latest
+          version: v2.12.2
           args: --timeout=5m
 
-      # Run unit tests and generate coverage report
+      - name: Dependency review
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
       - name: Verify dependencies
         run: go mod verify
-      - name: Build
-        run: go build -v ./...
-      - name: Run go vet
+
+      - name: govulncheck
+        # Version is lock-file enforced: the tool directive in go.mod pins
+        # govulncheck and go.sum verifies it (S8545).
+        run: go tool govulncheck ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
         run: go vet ./...
-      - name: Run tests
+
+      - name: go test
         run: go test -race -vet=off -coverprofile=coverage.out ./...
 
-      # Package up PR context for downstream workflow_run
+      # Package up PR context for downstream workflow_run (Sonar handoff).
+      # Values go through env (not inline ${{ }} in the script) and jq --arg, so
+      # an unusual branch/repo name can neither inject shell nor break the JSON.
       - name: Prepare PR context artifact
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          cat > pr-context.json <<'JSON'
-          {
-            "pr_number": "${{ github.event.pull_request.number }}",
-            "head_sha":  "${{ github.event.pull_request.head.sha }}",
-            "head_repo": "${{ github.event.pull_request.head.repo.full_name }}",
-            "head_branch": "${{ github.event.pull_request.head.ref }}",
-            "base_ref": "${{ github.event.pull_request.base.ref }}",
-            "run_id": "${{ github.run_id }}"
-          }
-          JSON
+          jq -n \
+            --arg pr_number "$PR_NUMBER" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg head_repo "$HEAD_REPO" \
+            --arg head_branch "$HEAD_BRANCH" \
+            --arg base_ref "$BASE_REF" \
+            --arg run_id "$RUN_ID" \
+            '{pr_number: $pr_number, head_sha: $head_sha, head_repo: $head_repo, head_branch: $head_branch, base_ref: $base_ref, run_id: $run_id}' \
+            > pr-context.json
           cat pr-context.json
 
       - name: Upload PR context

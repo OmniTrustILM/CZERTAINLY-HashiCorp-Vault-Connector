@@ -9,15 +9,21 @@ on:
       base_ref:    { description: "Base branch", required: true }
       run_id:      { description: "Upstream run ID", required: true }
 
-# What appears in the Actions list
 run-name: >-
   Sonar • PR #${{ inputs.pr_number }}
   • ${{ inputs.head_repo }}@${{ inputs.head_branch }}
   • ${{ inputs.head_sha }}
 
+# One analysis per pull request at a time. Successive commits each dispatch
+# their own run, and they all report under the same Sonar pull-request key, so
+# without this an older run finishing last would overwrite the newer result.
+concurrency:
+  group: sonar-pr-${{ inputs.pr_number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
-  checks: write
+  actions: read # download coverage + lint artifacts from the upstream Check PR run
   pull-requests: read
 
 jobs:
@@ -26,14 +32,94 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Export context
+      # Verify BEFORE anything else touches the inputs: pattern-validate every
+      # raw value, then semantically verify the whole tuple against the GitHub
+      # API. Sanitized values are exposed as step outputs sourced from the API
+      # responses (not the raw inputs), and nothing is written to GITHUB_ENV
+      # until this step has passed — a direct workflow_dispatch with crafted
+      # (e.g. multiline) inputs can neither inject environment variables nor
+      # reach any secret-bearing step.
+      - name: Verify and sanitize dispatch context
+        id: ctx
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          IN_PR_NUMBER: ${{ inputs.pr_number }}
+          IN_HEAD_SHA: ${{ inputs.head_sha }}
+          IN_HEAD_REPO: ${{ inputs.head_repo }}
+          IN_HEAD_BRANCH: ${{ inputs.head_branch }}
+          IN_BASE_BRANCH: ${{ inputs.base_ref }}
+          IN_RUN_ID: ${{ inputs.run_id }}
+        with:
+          script: |
+            const fail = (msg) => { core.setFailed(msg); throw new Error(msg); };
+            const pat = {
+              num:    /^[0-9]+$/,
+              sha:    /^[0-9a-f]{40}$/,
+              repo:   /^[A-Za-z0-9_.][A-Za-z0-9_.-]*\/[A-Za-z0-9_.][A-Za-z0-9_.-]*$/,
+              branch: /^[A-Za-z0-9_.][A-Za-z0-9_.\/-]*$/,
+            };
+            const inp = {
+              prNumber:   process.env.IN_PR_NUMBER,
+              headSha:    process.env.IN_HEAD_SHA,
+              headRepo:   process.env.IN_HEAD_REPO,
+              headBranch: process.env.IN_HEAD_BRANCH,
+              baseRef:    process.env.IN_BASE_BRANCH,
+              runId:      process.env.IN_RUN_ID,
+            };
+            if (!pat.num.test(inp.prNumber))     fail('bad pr_number');
+            if (!pat.sha.test(inp.headSha))      fail('bad head_sha');
+            if (!pat.repo.test(inp.headRepo))    fail('bad head_repo');
+            if (!pat.branch.test(inp.headBranch)) fail('bad head_branch');
+            if (!pat.branch.test(inp.baseRef))   fail('bad base_ref');
+            if (!pat.num.test(inp.runId))        fail('bad run_id');
+
+            const run = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo,
+              run_id: Number(inp.runId),
+            });
+            if (run.data.path !== '.github/workflows/check_pr.yml') fail('run_id is not the Check PR workflow');
+            if (run.data.event !== 'pull_request') fail('upstream run was not a pull_request run');
+            if (run.data.conclusion !== 'success') fail('upstream run did not succeed');
+            if (run.data.head_sha !== inp.headSha) fail('head_sha does not match upstream run');
+            const runHeadRepo = run.data.head_repository && run.data.head_repository.full_name;
+            if (runHeadRepo !== inp.headRepo) fail('head_repo does not match upstream run');
+
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner, repo: context.repo.repo,
+              pull_number: Number(inp.prNumber),
+            });
+            // Run <-> PR binding is proven by identical head sha+repo on both
+            // sides (run.data.pull_requests is empty for fork PRs and cannot
+            // be used as the linkage).
+            if (pr.data.head.sha !== inp.headSha) fail('PR head sha mismatch');
+            if (pr.data.head.repo.full_name !== inp.headRepo) fail('PR head repo mismatch');
+            if (pr.data.head.ref !== inp.headBranch) fail('head_branch does not match PR');
+            if (pr.data.base.ref !== inp.baseRef) fail('base_ref does not match PR base');
+            if (!/^main[A-Za-z0-9_.-]*$/.test(pr.data.base.ref)) fail('base ref is not a protected main* branch');
+
+            core.setOutput('pr_number',   String(pr.data.number));
+            core.setOutput('head_sha',    pr.data.head.sha);
+            core.setOutput('head_repo',   pr.data.head.repo.full_name);
+            core.setOutput('head_branch', pr.data.head.ref);
+            core.setOutput('base_ref',    pr.data.base.ref);
+
+      - name: Export verified context
+        # API-sourced, pattern-validated values only (git refs cannot contain
+        # whitespace or newlines, so the GITHUB_ENV write is injection-safe).
+        env:
+          V_PR_NUMBER: ${{ steps.ctx.outputs.pr_number }}
+          V_HEAD_SHA: ${{ steps.ctx.outputs.head_sha }}
+          V_HEAD_REPO: ${{ steps.ctx.outputs.head_repo }}
+          V_PR_BRANCH: ${{ steps.ctx.outputs.head_branch }}
+          V_BASE_BRANCH: ${{ steps.ctx.outputs.base_ref }}
         run: |
-          echo "PR_NUMBER=${{ inputs.pr_number }}"    >> $GITHUB_ENV
-          echo "HEAD_SHA=${{ inputs.head_sha }}"      >> $GITHUB_ENV
-          echo "HEAD_REPO=${{ inputs.head_repo }}"    >> $GITHUB_ENV
-          echo "PR_BRANCH=${{ inputs.head_branch }}"  >> $GITHUB_ENV
-          echo "BASE_BRANCH=${{ inputs.base_ref }}"   >> $GITHUB_ENV
-          echo "UPSTREAM_RUN_ID=${{ inputs.run_id }}" >> $GITHUB_ENV
+          {
+            echo "PR_NUMBER=$V_PR_NUMBER"
+            echo "HEAD_SHA=$V_HEAD_SHA"
+            echo "HEAD_REPO=$V_HEAD_REPO"
+            echo "PR_BRANCH=$V_PR_BRANCH"
+            echo "BASE_BRANCH=$V_BASE_BRANCH"
+          } >> "$GITHUB_ENV"
 
       - name: Generate token
         id: app_token
@@ -41,6 +127,9 @@ jobs:
         with:
           app-id: ${{ secrets.SONAR_GH_APP_ID }}
           private-key: ${{ secrets.SONAR_GH_APP_PRIVATE_KEY }}
+          # Narrow the token to exactly what the check steps need; without this
+          # it inherits every permission granted to the App installation.
+          permission-checks: write
 
       - name: Create GitHub Check (in_progress)
         id: create_check
@@ -57,28 +146,28 @@ jobs:
             });
             core.setOutput("check_id", check.data.id);
 
-      # Checkout fork PR branch + fetch base to compute diff
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # Checkout the VERIFIED immutable commit, not a movable branch ref.
+      # persist-credentials is off because the working tree that follows is
+      # PR-controlled: the job's token must not be left in .git/config there.
+      # The base fetch below reaches a public repository and needs no credential.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ env.HEAD_REPO }}
-          ref: ${{ env.PR_BRANCH }}
+          ref: ${{ env.HEAD_SHA }}
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Fetch base branch
-        run: |
-          git remote add upstream ${{ github.event.repository.clone_url }}
-          git fetch upstream $BASE_BRANCH
-          git checkout -B "$BASE_BRANCH" "upstream/$BASE_BRANCH"
-          git checkout "$PR_BRANCH"
-          git clean -ffdx && git reset --hard HEAD
-
+      # Both the working tree and these artifacts are produced by the pull
+      # request under analysis. Unpacking under RUNNER_TEMP instead of into the
+      # workspace means a symlink committed in the PR cannot redirect extraction
+      # over files this job later executes with SONAR_TOKEN in scope.
       - name: Download coverage report artifact from upstream run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: coverage-report
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.run_id }}
-          path: .
+          path: ${{ runner.temp }}/artifacts/coverage
 
       - name: Download golangci-lint report artifact from upstream run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -86,22 +175,62 @@ jobs:
           name: golangci-lint-report
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ inputs.run_id }}
-          path: .
+          path: ${{ runner.temp }}/artifacts/lint
 
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
+      - name: Stage analysis reports
+        run: |
+          set -euo pipefail
+          # rm -rf removes a symlink itself rather than following it, so a
+          # reports/ symlink committed in the PR is discarded before the real
+          # directory is created.
+          rm -rf reports
+          mkdir -p reports
+          # Drop any symlink inside the artifacts too, so nothing copied below
+          # can reach outside the workspace.
+          find "${RUNNER_TEMP}/artifacts" -type l -print -delete
+          cp "${RUNNER_TEMP}/artifacts/coverage/coverage.out" reports/coverage.out
+          cp "${RUNNER_TEMP}/artifacts/lint/golangci-lint-report.xml" reports/golangci-lint-report.xml
+          # Anything other than a regular file here means the artifact did not
+          # carry what this job expects.
+          test -f reports/coverage.out
+          test -f reports/golangci-lint-report.xml
+
+      - name: Fetch base branch and pin quality-policy files to base
+        # Runs after the reports are staged so the Sonar quality policy is the
+        # last thing written: it must come from the base branch, never from the
+        # PR under analysis.
+        run: |
+          git remote add upstream "${{ github.event.repository.clone_url }}"
+          git fetch upstream "refs/heads/${BASE_BRANCH}:refs/remotes/upstream/${BASE_BRANCH}"
+          # Sonar quality policy (exclusions, report paths) must not be editable
+          # from the PR under analysis: always take it from the base branch.
+          git checkout "refs/remotes/upstream/${BASE_BRANCH}" -- sonar-project.properties
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN:  ${{ secrets.SONAR_TOKEN }}
         with:
+          # Project identity and the quality-gate wait are workflow-owned and
+          # cannot be overridden by PR-controlled files.
           args: >
+            -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.projectKey=ilm_hashicorp-vault-connector
+            -Dsonar.organization=ilm
+            -Dsonar.qualitygate.wait=true
             -Dsonar.scm.revision=${{ env.HEAD_SHA }}
             -Dsonar.pullrequest.key=${{ env.PR_NUMBER }}
             -Dsonar.pullrequest.branch=${{ env.PR_BRANCH }}
             -Dsonar.pullrequest.base=${{ env.BASE_BRANCH }}
+            -Dsonar.go.coverage.reportPaths=reports/coverage.out
+            -Dsonar.go.golangci-lint.reportPaths=reports/golangci-lint-report.xml
 
       - name: Finalize GitHub Check
         if: always()
+        # Non-fatal: a transient checks.update error must not flip an otherwise
+        # successful scan to a failed job. The job's real conclusion is unchanged.
+        continue-on-error: true
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ steps.app_token.outputs.token }}
@@ -110,15 +239,20 @@ jobs:
             const status = "${{ job.status }}";
             const conclusions = { success: "success", failure: "failure", cancelled: "cancelled" };
             const conclusion = conclusions[status] || "failure";
-            await github.rest.checks.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              check_run_id: checkId,
-              completed_at: new Date().toISOString(),
-              status: "completed",
-              conclusion,
-              output: {
-                title: "SonarQube Analysis Result",
-                summary: `✅ SonarQube analysis concluded with status: **${conclusion}**`,
-              }
-            });
+            const icon = conclusion === "success" ? "✅" : "❌";
+            try {
+              await github.rest.checks.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                check_run_id: checkId,
+                completed_at: new Date().toISOString(),
+                status: "completed",
+                conclusion,
+                output: {
+                  title: "SonarQube Analysis Result",
+                  summary: `${icon} SonarQube analysis concluded with status: **${conclusion}**`,
+                }
+              });
+            } catch (e) {
+              core.warning(`Failed to finalize the SonarQube Analysis check: ${e.message}`);
+            }
