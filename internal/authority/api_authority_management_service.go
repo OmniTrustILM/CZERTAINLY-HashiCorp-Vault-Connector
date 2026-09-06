@@ -3,11 +3,11 @@ package authority
 import (
 	"context"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/db"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/utils"
 	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/vault"
 	vault2 "github.com/hashicorp/vault-client-go"
-	"github.com/yuseferi/zax/v2"
 	"go.uber.org/zap"
 	"net/http"
 	"strings"
@@ -68,7 +68,7 @@ func (s *AuthorityManagementAPIService) CreateAuthorityInstance(ctx context.Cont
 		}), nil
 	}
 
-	s.log.With(zax.Get(ctx)...).Info("Creating authority", zap.String("name", authority.Name),
+	s.log.With(logger.Fields(ctx)...).Info("Creating authority", zap.String("name", authority.Name),
 		zap.String("uuid", authority.UUID), zap.String("url", authority.URL),
 		zap.String("credentialType", authority.CredentialType),
 		zap.String("mountPath", authority.MountPath), zap.String("vaultRole", authority.VaultRole))
@@ -117,12 +117,12 @@ func (s *AuthorityManagementAPIService) GetCaCertificates(ctx context.Context, u
 		return *errResp, nil
 	}
 
-	s.log.With(zax.Get(ctx)...).Info("Getting CA certificates", zap.String("authority", authority.Name), zap.String("uuid", authority.UUID))
+	s.log.With(logger.Fields(ctx)...).Info("Getting CA certificates", zap.String("authority", authority.Name), zap.String("uuid", authority.UUID))
 	//https://github.com/hashicorp/vault/issues/919 do not use PkiReadCaChainPem
 	certificateCaResponse, err := client.Secrets.PkiReadCertCaChain(ctx, vault2.WithMountPath(engineName+"/"))
 
 	if err != nil {
-		s.log.With(zax.Get(ctx)...).Error(err.Error())
+		s.log.With(logger.Fields(ctx)...).Error(err.Error())
 		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
 			Message: err.Error(),
 		}), nil
@@ -174,7 +174,7 @@ func (s *AuthorityManagementAPIService) GetCrl(ctx context.Context, uuid string,
 
 	var chain []string
 	if certificateRevocationListRequestDto.Delta {
-		s.log.With(zax.Get(ctx)...).Info("Getting Delta CRL", zap.String("authority", authority.Name), zap.String("uuid", authority.UUID))
+		s.log.With(logger.Fields(ctx)...).Info("Getting Delta CRL", zap.String("authority", authority.Name), zap.String("uuid", authority.UUID))
 		deltaCrl, err := client.Secrets.PkiReadCertDeltaCrl(ctx, vault2.WithMountPath(engineName+"/"))
 		if err != nil {
 			return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
@@ -190,7 +190,7 @@ func (s *AuthorityManagementAPIService) GetCrl(ctx context.Context, uuid string,
 		}
 
 	} else {
-		s.log.With(zax.Get(ctx)...).Info("Getting CRL", zap.String("authority", authority.Name), zap.String("uuid", authority.UUID))
+		s.log.With(logger.Fields(ctx)...).Info("Getting CRL", zap.String("authority", authority.Name), zap.String("uuid", authority.UUID))
 		completeCrl, err := client.Secrets.PkiReadCertCrl(ctx, vault2.WithMountPath(engineName+"/"))
 		if err != nil {
 			return model.Response(http.StatusInternalServerError, model.ErrorMessageDto{
@@ -283,7 +283,7 @@ func (s *AuthorityManagementAPIService) RemoveAuthorityInstance(ctx context.Cont
 		return model.Response(204, nil), nil
 	}
 
-	s.log.With(zax.Get(ctx)...).Info("Removing authority", zap.String("name", authority.Name), zap.String("uuid", authority.UUID))
+	s.log.With(logger.Fields(ctx)...).Info("Removing authority", zap.String("name", authority.Name), zap.String("uuid", authority.UUID))
 	// Delete the authority if it has been found
 	err = s.authorityRepo.DeleteAuthorityInstance(authority)
 	if err != nil {
@@ -329,7 +329,7 @@ func (s *AuthorityManagementAPIService) UpdateAuthorityInstance(ctx context.Cont
 	authority.VaultRole = vaultRole
 	authority.Attributes = string(marshaledAttrs)
 
-	s.log.With(zax.Get(ctx)...).Info("Updating authority", zap.String("name", authority.Name),
+	s.log.With(logger.Fields(ctx)...).Info("Updating authority", zap.String("name", authority.Name),
 		zap.String("uuid", authority.UUID), zap.String("url", authority.URL),
 		zap.String("credentialType", authority.CredentialType),
 		zap.String("mountPath", authority.MountPath), zap.String("vaultRole", authority.VaultRole))
@@ -350,7 +350,7 @@ func (s *AuthorityManagementAPIService) UpdateAuthorityInstance(ctx context.Cont
 
 // ValidateRAProfileAttributes - Validate RA Profile attributes
 func (s *AuthorityManagementAPIService) ValidateRAProfileAttributes(ctx context.Context, uuid string, attributes []model.Attribute) (model.ImplResponse, error) {
-	s.log.With(zax.Get(ctx)...).Info("Validating RA Profile attributes", zap.String("uuid", uuid))
+	s.log.With(logger.Fields(ctx)...).Info("Validating RA Profile attributes", zap.String("uuid", uuid))
 	return model.Response(http.StatusOK, nil), nil
 }
 
@@ -362,7 +362,7 @@ func (s *AuthorityManagementAPIService) RAProfileCallback(ctx context.Context, u
 	}
 	authority, err := s.authorityRepo.FindAuthorityInstanceByUUID(uuid)
 	if err != nil {
-		s.log.With(zax.Get(ctx)...).Error(err.Error())
+		s.log.With(logger.Fields(ctx)...).Error(err.Error())
 		//return model.Response(http.StatusNotFound, model.ErrorMessageDto{
 		//	Message: "Authority not found by UUID"+ uuid,
 		//}), nil
@@ -381,10 +381,10 @@ func (s *AuthorityManagementAPIService) RAProfileCallback(ctx context.Context, u
 		}), err
 	}
 
-	s.log.With(zax.Get(ctx)...).Info("Getting roles for callback", zap.String("authority", authority.Name), zap.String("uuid", authority.UUID))
+	s.log.With(logger.Fields(ctx)...).Info("Getting roles for callback", zap.String("authority", authority.Name), zap.String("uuid", authority.UUID))
 	roles, err := client.Secrets.PkiListRoles(ctx, vault2.WithMountPath(engineName+"/"))
 	if err != nil {
-		s.log.With(zax.Get(ctx)...).Error(err.Error())
+		s.log.With(logger.Fields(ctx)...).Error(err.Error())
 		return model.Response(http.StatusBadRequest, model.ErrorMessageDto{
 			Message: "Failed to list roles for engine " + engineName,
 		}), nil

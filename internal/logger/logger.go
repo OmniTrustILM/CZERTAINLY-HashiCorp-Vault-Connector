@@ -96,3 +96,29 @@ func WithCtx(ctx context.Context, l *zap.Logger) context.Context {
 
 	return context.WithValue(ctx, ctxKey{}, l)
 }
+
+// fieldsKey is the context key under which contextual log fields are stored.
+type fieldsKey struct{}
+
+// Fields returns the log fields associated with the ctx, or nil if the
+// context carries none.
+func Fields(ctx context.Context) []zap.Field {
+	if fields, ok := ctx.Value(fieldsKey{}).([]zap.Field); ok {
+		return fields
+	}
+
+	return nil
+}
+
+// WithFields returns a copy of ctx carrying the given fields in addition to
+// any the context already holds. The fields of the parent context are left
+// unchanged.
+func WithFields(ctx context.Context, fields ...zap.Field) context.Context {
+	existing := Fields(ctx)
+
+	combined := make([]zap.Field, 0, len(existing)+len(fields))
+	combined = append(combined, existing...)
+	combined = append(combined, fields...)
+
+	return context.WithValue(ctx, fieldsKey{}, combined)
+}
