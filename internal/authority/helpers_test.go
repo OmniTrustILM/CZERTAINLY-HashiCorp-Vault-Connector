@@ -171,3 +171,39 @@ func TestMarshalAttributes(t *testing.T) {
 		t.Errorf("got %s, want %s", got, want)
 	}
 }
+
+// A request body is client-supplied, so a present attribute carrying empty or
+// wrongly-typed content must not panic the handler that reads it.
+func TestOptionalStringAttributeToleratesMalformedContent(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		attributes []model.Attribute
+	}{
+		{"attribute absent", nil},
+		{"content empty", []model.Attribute{model.RequestAttributeDto{Uuid: model.AUTHORITY_MOUNT_PATH_ATTR, Content: []model.AttributeContent{}}}},
+		{"content not a string", []model.Attribute{model.RequestAttributeDto{Uuid: model.AUTHORITY_MOUNT_PATH_ATTR, Content: []model.AttributeContent{model.SecretAttributeContent{Data: model.SecretAttributeContentData{Secret: "s"}}}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := optionalStringAttribute(model.AUTHORITY_MOUNT_PATH_ATTR, tc.attributes); got != "" {
+				t.Errorf("got %q, want an empty string", got)
+			}
+		})
+	}
+}
+
+func TestSecretAttributeValueToleratesMalformedContent(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		attributes []model.Attribute
+	}{
+		{"attribute absent", nil},
+		{"content empty", []model.Attribute{model.RequestAttributeDto{Uuid: model.AUTHORITY_ROLE_ID_ATTR, Content: []model.AttributeContent{}}}},
+		{"content not a secret", []model.Attribute{model.RequestAttributeDto{Uuid: model.AUTHORITY_ROLE_ID_ATTR, Content: []model.AttributeContent{model.StringAttributeContent{Data: "not-a-secret"}}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := secretAttributeValue(model.AUTHORITY_ROLE_ID_ATTR, tc.attributes); got != "" {
+				t.Errorf("got %q, want an empty string", got)
+			}
+		})
+	}
+}

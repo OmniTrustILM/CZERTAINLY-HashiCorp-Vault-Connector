@@ -15,11 +15,10 @@ import (
 // nearly verbatim, across the certificate and authority management
 // services: resolving the RA profile engine/role, looking up the stored
 // authority, opening a Vault client for it, and building the CA-chain and
-// attribute-extraction shapes used by more than one endpoint. Each helper
-// mirrors exactly the inline code it replaces, including which status code
-// and message it reports on failure, so callers that used to differ in
-// wording or status intentionally keep their own inline handling instead of
-// being forced through one of these.
+// attribute-extraction shapes used by more than one endpoint. Endpoints whose
+// failure responses differ in status or wording keep their own handling rather
+// than being forced through a shared helper, because those differences are part
+// of each endpoint's contract.
 
 // resolveEngineName extracts the PKI engine name from the RA profile
 // attributes, returning the bad-request response used throughout this
@@ -110,25 +109,49 @@ func certificateChainResponse(chain []string) model.CaCertificatesResponseDto {
 	return model.CaCertificatesResponseDto{Certificates: certificates}
 }
 
-// optionalStringAttribute returns the string value of the first content
-// item for the attribute identified by attrUUID, or "" if the attribute is
-// not present. As in the inline code it replaces, a present attribute whose
-// content is not a string is not guarded against and will panic.
+// optionalStringAttribute returns the string value of the first content item
+// for the attribute identified by attrUUID. A missing attribute, empty
+// content, or content that does not hold a string all yield "", because the
+// request body is client-supplied and must not be able to panic a handler.
 func optionalStringAttribute(attrUUID string, attributes []model.Attribute) string {
 	attr := model.GetAttributeFromArrayByUUID(attrUUID, attributes)
 	if attr == nil {
 		return ""
 	}
-	return attr.GetContent()[0].GetData().(string)
+	content := attr.GetContent()
+	if len(content) == 0 {
+		return ""
+	}
+	value, ok := content[0].GetData().(string)
+	if !ok {
+		return ""
+	}
+	return value
 }
 
 // secretAttributeValue returns the secret held by the SecretAttributeContent
-// of the attribute identified by attrUUID. Callers are expected to only use
-// this where the attribute is known to be present, matching the inline code
-// this replaces.
+// of the attribute identified by attrUUID, or "" when the attribute is
+// missing, its content is empty, or the content is not a secret. An empty
+// credential fails the subsequent Vault login with a reportable error, which
+// is preferable to panicking a handler on a malformed request body.
 func secretAttributeValue(attrUUID string, attributes []model.Attribute) string {
-	content := model.GetAttributeFromArrayByUUID(attrUUID, attributes).GetContent()[0]
-	return content.(model.SecretAttributeContent).GetData().(model.SecretAttributeContentData).Secret
+	attr := model.GetAttributeFromArrayByUUID(attrUUID, attributes)
+	if attr == nil {
+		return ""
+	}
+	content := attr.GetContent()
+	if len(content) == 0 {
+		return ""
+	}
+	secret, ok := content[0].(model.SecretAttributeContent)
+	if !ok {
+		return ""
+	}
+	data, ok := secret.GetData().(model.SecretAttributeContentData)
+	if !ok {
+		return ""
+	}
+	return data.Secret
 }
 
 // marshalAttributes marshals the attributes to JSON, returning the
