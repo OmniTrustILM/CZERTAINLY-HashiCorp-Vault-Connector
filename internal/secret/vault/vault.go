@@ -5,8 +5,8 @@ import (
 	"encoding/pem"
 	"fmt"
 
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/logger"
-	sm "CZERTAINLY-HashiCorp-Vault-Connector/internal/secret/model"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
+	sm "github.com/OmniTrustILM/hashicorp-vault-connector/internal/secret/model"
 
 	vcg "github.com/hashicorp/vault-client-go"
 	vcgSchema "github.com/hashicorp/vault-client-go/schema"

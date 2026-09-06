@@ -1,20 +1,20 @@
 openapi: 3.0.1
 info:
-  title: CZERTAINLY Authority Provider v2 API
+  title: ILM Authority Provider v2 API
   description: REST API for implementations of custom v2 Authority Provider
   contact:
-    name: CZERTAINLY
-    url: https://www.czertainly.com
-    email: getinfo@czertainly.com
+    name: ILM
+    url: https://www.omnitrust.com
+    email: ilm@omnitrust.com
   license:
     name: MIT License
-    url: https://github.com/3KeyCompany/CZERTAINLY/blob/develop/LICENSE.md
+    url: https://github.com/OmniTrustILM/hashicorp-vault-connector/blob/main/LICENSE.md
   version: 2.11.0
   x-logo:
-    url: images/czertainly_color_H.svg
+    url: images/ilm_color_H.svg
 externalDocs:
-  description: CZERTAINLY Documentation
-  url: https://docs.czertainly.com
+  description: ILM Documentation
+  url: https://docs.omnitrust.com
 servers:
 - url: http://localhost:8080
   description: Generated server url

@@ -1,7 +1,7 @@
 package connectorInfo
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/model"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"net/http"
 	"strings"
 )

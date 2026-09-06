@@ -1,10 +1,10 @@
 package db
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/config"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/logger"
 	"errors"
 	"fmt"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/config"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
 	"go.uber.org/zap"
 
 	"gorm.io/driver/postgres"

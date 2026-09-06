@@ -1,7 +1,7 @@
 package authority
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/model"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"io"
 	"net/http"
 	"strings"

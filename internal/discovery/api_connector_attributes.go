@@ -1,7 +1,7 @@
 package discovery
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/model"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"github.com/gorilla/mux"
 	"io"
 

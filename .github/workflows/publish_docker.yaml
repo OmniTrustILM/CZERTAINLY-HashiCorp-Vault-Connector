@@ -25,7 +25,7 @@ jobs:
       COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
       COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
     with:
-      image: ilm-private/hashicorp-vault-connector
+      image: ilm/hashicorp-vault-connector
       cache-scope: hashicorp-vault-connector
       # The Dockerfile builds the Go binary from the sources.
       pre-build: none

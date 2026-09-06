@@ -31,21 +31,22 @@ COPY docker /app/docker
 #
 FROM alpine:3.23
 
-LABEL org.opencontainers.image.authors="CZERTAINLY <support@czertainly.com>"
+LABEL org.opencontainers.image.authors="ILM <ilm@omnitrust.com>"
 
-# add non root user czertainly
+# add non root user hashicorp-vault-connector
 RUN apk upgrade --no-cache \
-    && addgroup --system --gid 10001 czertainly \
-    && adduser --system --home /opt/czertainly --uid 10001 --ingroup czertainly czertainly
+    && addgroup --system --gid 10001 hashicorp-vault-connector \
+    && adduser --system --home /opt/hashicorp-vault-connector --uid 10001 \
+       --ingroup hashicorp-vault-connector hashicorp-vault-connector
 
 COPY --from=builder /app/docker /
-COPY --from=builder /app /opt/czertainly
+COPY --from=builder /app /opt/hashicorp-vault-connector
 
-WORKDIR /opt/czertainly
+WORKDIR /opt/hashicorp-vault-connector
 
 ENV SERVER_PORT=8080
 ENV LOG_LEVEL=INFO
 
 USER 10001
 
-ENTRYPOINT ["/opt/czertainly/entry.sh"]
+ENTRYPOINT ["/opt/hashicorp-vault-connector/entry.sh"]
