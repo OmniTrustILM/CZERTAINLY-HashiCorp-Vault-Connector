@@ -8,6 +8,8 @@ import (
 	"encoding/pem"
 	"math/big"
 	"testing"
+
+	"github.com/google/uuid"
 	"time"
 )
 
@@ -44,11 +46,15 @@ func TestDeterministicGUIDSeparatesDifferentInputs(t *testing.T) {
 	}
 }
 
-func TestGenerateRandomUUIDProducesDistinctValues(t *testing.T) {
-	first := GenerateRandomUUID()
-	second := GenerateRandomUUID()
-	if first == second {
-		t.Fatal("two calls returned the same UUID")
+func TestGenerateRandomUUIDProducesAWellFormedValue(t *testing.T) {
+	got := GenerateRandomUUID()
+
+	parsed, err := uuid.Parse(got)
+	if err != nil {
+		t.Fatalf("parse %q: %v", got, err)
+	}
+	if parsed == uuid.Nil {
+		t.Fatal("got the nil UUID, which means random generation failed")
 	}
 }
 

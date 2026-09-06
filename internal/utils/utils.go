@@ -46,7 +46,7 @@ func ExtractCommonName(csr []byte) (string, error) {
 	csrParsed, err := x509.ParseCertificateRequest(csr)
 	if err != nil {
 		log.Error("Failed to parse CSR: " + err.Error())
-		return "", fmt.Errorf("failed to parse CSR: %v", err)
+		return "", fmt.Errorf("failed to parse CSR: %w", err)
 	}
 
 	commonName := csrParsed.Subject.CommonName
@@ -57,7 +57,7 @@ func ExtractSerialNumber(certificate []byte) (string, error) {
 	certificateParsed, err := x509.ParseCertificate(certificate)
 	if err != nil {
 		log.Error("Failed to parse certificate: " + err.Error())
-		return "", fmt.Errorf("failed to parse certificate: %v", err)
+		return "", fmt.Errorf("failed to parse certificate: %w", err)
 	}
 
 	bytes := certificateParsed.SerialNumber.Bytes()
@@ -84,7 +84,7 @@ func GetCertificatesFromDer(pemData []byte) ([]string, error) {
 
 		cert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse certificate: %v", err)
+			return nil, fmt.Errorf("failed to parse certificate: %w", err)
 		}
 		certBlock := pem.EncodeToMemory(&pem.Block{
 			Type:  "CERTIFICATE",
