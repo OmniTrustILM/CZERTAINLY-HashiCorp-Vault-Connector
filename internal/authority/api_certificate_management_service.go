@@ -18,7 +18,7 @@ import (
 // This service should implement the business logic for every endpoint for the CertificateManagementAPI API.
 // Include any external packages or services that will be required by this service.
 type CertificateManagementAPIService struct {
-	authorityRepo *db.AuthorityRepository
+	authorityRepo authorityRepository
 	log           *zap.Logger
 }
 

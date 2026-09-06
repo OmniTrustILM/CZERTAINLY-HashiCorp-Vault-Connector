@@ -49,13 +49,28 @@ func resolveRoleName(raAttributes []model.Attribute) (string, *model.ImplRespons
 	return role, nil
 }
 
+// authorityRepository is the subset of *db.AuthorityRepository's methods
+// that findAuthority and the services in this package call. Depending on
+// this interface instead of the concrete repository type lets tests
+// substitute a fake and exercise service logic - the not-found path, and
+// anything that runs before or after the Vault call - without a live
+// database.
+type authorityRepository interface {
+	FindAuthorityInstanceByUUID(uuid string) (*db.AuthorityInstance, error)
+	FindAuthorityInstanceByName(name string) (*db.AuthorityInstance, error)
+	CreateAuthorityInstance(authority *db.AuthorityInstance) error
+	UpdateAuthorityInstance(authority *db.AuthorityInstance) error
+	DeleteAuthorityInstance(authority *db.AuthorityInstance) error
+	ListAuthorityInstances() ([]*db.AuthorityInstance, error)
+}
+
 // findAuthority looks up the stored authority instance by uuid, returning
 // the not-found response used by the certificate and CA-chain operations in
 // this package when it does not exist. GetConnection and
 // UpdateAuthorityInstance report this same lookup failing as an internal
 // error instead, so they deliberately keep their own inline check rather
 // than calling this helper.
-func findAuthority(authorityRepo *db.AuthorityRepository, uuid string) (*db.AuthorityInstance, *model.ImplResponse) {
+func findAuthority(authorityRepo authorityRepository, uuid string) (*db.AuthorityInstance, *model.ImplResponse) {
 	authority, err := authorityRepo.FindAuthorityInstanceByUUID(uuid)
 	if err != nil {
 		resp := model.Response(http.StatusNotFound, model.ErrorMessageDto{

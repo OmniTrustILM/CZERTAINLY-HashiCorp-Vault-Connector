@@ -17,7 +17,7 @@ import (
 // This service should implement the business logic for every endpoint for the AuthorityManagementAPI API.
 // Include any external packages or services that will be required by this service.
 type AuthorityManagementAPIService struct {
-	authorityRepo *db.AuthorityRepository
+	authorityRepo authorityRepository
 	log           *zap.Logger
 }
 
