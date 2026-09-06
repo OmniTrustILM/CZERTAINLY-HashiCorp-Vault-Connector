@@ -1,0 +1,53 @@
+name: Sonar Main
+
+# Branch analysis of the default branch. This maintains the SonarCloud
+# baseline that the PR analysis chain (check_pr -> dispatch-sonar -> sonar)
+# compares against: without a main-branch analysis the project has no
+# quality-gate reference and no "new code" definition. Push events on main
+# run only repository-owned code, so using SONAR_TOKEN here is safe.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonar-main-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sonar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history for accurate SCM blame data
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go test with coverage
+        run: go test -race -coverprofile=coverage.out ./...
+
+      # The .golangci.yml checkstyle formatter writes golangci-lint-report.xml,
+      # consumed by the Sonar scan below.
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.12.2
+          args: --timeout=5m
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.projectKey=ilm_hashicorp-vault-connector
+            -Dsonar.organization=ilm
+            -Dsonar.qualitygate.wait=true

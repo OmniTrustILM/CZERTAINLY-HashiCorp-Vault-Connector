@@ -93,7 +93,7 @@ func (c *AuthorityManagementAPIController) Routes() model.Routes {
 			HandlerFunc: c.ValidateRAProfileAttributes,
 		},
 		"RAProfileCallback": model.Route{
-			Method:      strings.ToUpper("Get"),
+			Method: strings.ToUpper("Get"),
 			// {engineName:.*} so nested Vault mount paths (e.g. team/pki-root) round-trip;
 			// the default mux pattern would not match a value containing '/'.
 			Pattern:     "/v1/authorityProvider/authorities/{uuid}/raProfileRole/{engineName:.*}/callback",
