@@ -15,12 +15,42 @@ import (
 	"go.uber.org/zap"
 )
 
+// discoveryRepository is the subset of *db.DiscoveryRepository's methods that
+// DiscoveryAPIService calls. Depending on this interface instead of the
+// concrete repository type lets tests substitute a fake and exercise service
+// logic without a live database.
+type discoveryRepository interface {
+	FindDiscoveryByUUID(uuid string) (*db.Discovery, error)
+	CreateDiscovery(discovery *db.Discovery) error
+	DeleteDiscovery(discovery *db.Discovery) error
+	UpdateDiscovery(discovery *db.Discovery) error
+	AssociateCertificatesToDiscovery(discovery *db.Discovery, certificates ...*db.Certificate) error
+	List(pagination db.Pagination, discovery *db.Discovery) (*db.Pagination, error)
+}
+
+// authorityRepository is the subset of *db.AuthorityRepository's methods that
+// DiscoveryAPIService calls, for the same reason.
+type authorityRepository interface {
+	FindAuthorityInstanceByUUID(uuid string) (*db.AuthorityInstance, error)
+	ListAuthorityInstances() ([]*db.AuthorityInstance, error)
+}
+
+// failDiscovery marks the discovery as failed and persists it.
+func (s *DiscoveryAPIService) failDiscovery(ctx context.Context, discovery *db.Discovery, reason string) {
+	s.log.With(logger.Fields(ctx)...).Error(reason)
+	discovery.Status = "FAILED"
+
+	if err := s.discoveryRepo.UpdateDiscovery(discovery); err != nil {
+		s.log.With(logger.Fields(ctx)...).Error(err.Error())
+	}
+}
+
 // DiscoveryAPIService is a service that implements the logic for the DiscoveryAPIServicer
 // This service should implement the business logic for every endpoint for the DiscoveryAPI API.
 // Include any external packages or services that will be required by this service.
 type DiscoveryAPIService struct {
-	discoveryRepo *db.DiscoveryRepository
-	authorityRepo *db.AuthorityRepository
+	discoveryRepo discoveryRepository
+	authorityRepo authorityRepository
 	log           *zap.Logger
 }
 
@@ -152,12 +182,7 @@ func (s *DiscoveryAPIService) DiscoveryCertificates(ctx context.Context, authori
 	// get the vault client
 	client, err := vault.GetClient(*authority)
 	if err != nil {
-		discovery.Status = "FAILED"
-		err := s.discoveryRepo.UpdateDiscovery(discovery)
-		if err != nil {
-			s.log.With(logger.Fields(ctx)...).Error(err.Error())
-		}
-		s.log.With(logger.Fields(ctx)...).Error(err.Error())
+		s.failDiscovery(ctx, discovery, err.Error())
 		return
 	}
 
@@ -198,12 +223,7 @@ func (s *DiscoveryAPIService) DiscoveryCertificates(ctx context.Context, authori
 			}
 			err = s.discoveryRepo.AssociateCertificatesToDiscovery(discovery, certificateKeys...)
 			if err != nil {
-				discovery.Status = "FAILED"
-				s.log.With(logger.Fields(ctx)...).Error(err.Error())
-				err := s.discoveryRepo.UpdateDiscovery(discovery)
-				if err != nil {
-					s.log.With(logger.Fields(ctx)...).Error(err.Error())
-				}
+				s.failDiscovery(ctx, discovery, err.Error())
 				return
 			}
 		}
@@ -212,12 +232,7 @@ func (s *DiscoveryAPIService) DiscoveryCertificates(ctx context.Context, authori
 	discovery.Status = "COMPLETED"
 	err = s.discoveryRepo.UpdateDiscovery(discovery)
 	if err != nil {
-		discovery.Status = "FAILED"
-		s.log.With(logger.Fields(ctx)...).Error(err.Error())
-		err := s.discoveryRepo.UpdateDiscovery(discovery)
-		if err != nil {
-			s.log.With(logger.Fields(ctx)...).Error(err.Error())
-		}
+		s.failDiscovery(ctx, discovery, err.Error())
 		return
 	}
 
