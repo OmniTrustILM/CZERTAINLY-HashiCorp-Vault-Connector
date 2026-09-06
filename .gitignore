@@ -46,3 +46,4 @@ golangci-lint-report.xml
 
 ### Local working documents ###
 docs/superpowers/
+.superpowers/
