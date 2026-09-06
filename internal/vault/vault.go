@@ -1,11 +1,11 @@
 package vault
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/db"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/logger"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/model"
 	"context"
 	"fmt"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/db"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"os"
 	"time"
 
@@ -16,7 +16,7 @@ import (
 var log = logger.Get()
 
 const DEFAULT_K8S_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-const DEFAULT_VAULT_ROLE = "czertainly-role"
+const DEFAULT_VAULT_ROLE = "vault-connector-role"
 const DEFAULT_KUBERNETES_MOUNT_PATH = "kubernetes"
 const DEFAULT_JWT_MOUNT_PATH = "jwt"
 const DEFAULT_APPROLE_MOUNT_PATH = "approle"

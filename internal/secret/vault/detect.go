@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/logger"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
 
 	vcg "github.com/hashicorp/vault-client-go"
 	"github.com/stretchr/objx"

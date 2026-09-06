@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	sm "CZERTAINLY-HashiCorp-Vault-Connector/internal/secret/model"
+	sm "github.com/OmniTrustILM/hashicorp-vault-connector/internal/secret/model"
 
 	vcg "github.com/hashicorp/vault-client-go"
 	vcgSchema "github.com/hashicorp/vault-client-go/schema"

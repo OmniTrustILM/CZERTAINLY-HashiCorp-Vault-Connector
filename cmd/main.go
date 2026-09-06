@@ -1,17 +1,17 @@
 package main
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/authority"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/config"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/connectorInfo"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/db"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/discovery"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/health"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/logger"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/model"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/secret"
-	sm "CZERTAINLY-HashiCorp-Vault-Connector/internal/secret/model"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/utils"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/authority"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/config"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/connectorInfo"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/db"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/discovery"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/health"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/secret"
+	sm "github.com/OmniTrustILM/hashicorp-vault-connector/internal/secret/model"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/utils"
 
 	"context"
 	"encoding/json"
@@ -35,7 +35,7 @@ var log = logger.Get()
 func main() {
 	routes = make(map[string][]model.EndpointDto)
 	c := config.Get()
-	log.Info("Starting CZERTAINLY-HashiCorp-Vault-Connector", zap.String("version", version))
+	log.Info("Starting HashiCorp-Vault-Connector", zap.String("version", version))
 	conn, _ := db.ConnectDB(c)
 	schema := config.Get().Database.Schema
 
@@ -192,7 +192,7 @@ func v2Info(w http.ResponseWriter, r *http.Request) {
 	resp := sm.InfoResponse{
 		Connector: sm.ConnectorInfo{
 			Id:      "ilm.hashicorp.vault.secret.provider",
-			Name:    "CZERTAINLY-HashiCorp-Vault-Connector",
+			Name:    "HashiCorp-Vault-Connector",
 			Version: version,
 		},
 		Interfaces: []sm.ConnectorInterfaceInfo{

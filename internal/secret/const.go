@@ -1,7 +1,7 @@
 package secret
 
 import (
-	sm "CZERTAINLY-HashiCorp-Vault-Connector/internal/secret/model"
+	sm "github.com/OmniTrustILM/hashicorp-vault-connector/internal/secret/model"
 )
 
 // Secret attributes definitions

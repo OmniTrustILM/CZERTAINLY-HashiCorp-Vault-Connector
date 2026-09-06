@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"os"
 
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/logger"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/metrics"
-	sv "CZERTAINLY-HashiCorp-Vault-Connector/internal/secret/vault"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/metrics"
+	sv "github.com/OmniTrustILM/hashicorp-vault-connector/internal/secret/vault"
 
 	"github.com/gorilla/mux"
 	"go.uber.org/zap"

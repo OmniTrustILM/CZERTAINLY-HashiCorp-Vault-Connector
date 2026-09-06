@@ -1,12 +1,12 @@
 package discovery
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/db"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/model"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/utils"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/vault"
 	"context"
 	"encoding/base64"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/db"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/utils"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/vault"
 	"net/http"
 	"strings"
 

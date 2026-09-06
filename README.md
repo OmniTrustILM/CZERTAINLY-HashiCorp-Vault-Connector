@@ -1,6 +1,4 @@
-# CZERTAINLY HashiCorp Vault Connector
-
-> This repository is part of the open-source project CZERTAINLY. You can find more information about the project at [CZERTAINLY](https://github.com/CZERTAINLY/CZERTAINLY) repository, including the contribution guide.
+# HashiCorp Vault Connector
 
 HashiCorp Vault `Connector` is the implementation of the following `Function Groups` and `Kinds`:
 
@@ -30,7 +28,7 @@ HashiCorp Vault `Connector` requires the PostgreSQL database version 12+.
 
 ## Docker container
 
-HashiCorp Vault `Connector` is provided as a Docker container. Use the `docker.io/czertainly/czertainly-hashicorp-vaul-connector:tagname` to pull the required image from the repository. It can be configured using the following environment variables:
+HashiCorp Vault `Connector` is provided as a Docker container. Use the `ilm/hashicorp-vault-connector:tagname` image to pull the required image from the repository. It can be configured using the following environment variables:
 
 | Variable            | Description                       | Required                                           | Default value |
 |---------------------|-----------------------------------|----------------------------------------------------|---------------|

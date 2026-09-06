@@ -39,7 +39,7 @@ Run every command above from the repo root before considering a change done.
 
 ## Architecture
 
-This is a **CZERTAINLY framework connector** for HashiCorp Vault. It exposes REST APIs that the CZERTAINLY platform calls to manage certificates (PKI secrets engine) and secrets (KV) in Vault.
+This is an **ILM framework connector** for HashiCorp Vault. It exposes REST APIs that the ILM platform calls to manage certificates (PKI secrets engine) and secrets (KV) in Vault.
 
 ### Providers
 

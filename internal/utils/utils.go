@@ -1,12 +1,12 @@
 package utils
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/logger"
 	"crypto/md5"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
 	"strings"
 
 	"github.com/google/uuid"
@@ -54,10 +54,12 @@ func ExtractCommonName(csr []byte) (string, error) {
 }
 
 func ExtractSerialNumber(certificate []byte) (string, error) {
-	certificateParsed, errParse := x509.ParseCertificate(certificate)
-	if errParse != nil {
-		log.Error("Failed to parse certificate: " + errParse.Error())
+	certificateParsed, err := x509.ParseCertificate(certificate)
+	if err != nil {
+		log.Error("Failed to parse certificate: " + err.Error())
+		return "", fmt.Errorf("failed to parse certificate: %v", err)
 	}
+
 	bytes := certificateParsed.SerialNumber.Bytes()
 
 	hexStr := make([]string, len(bytes))

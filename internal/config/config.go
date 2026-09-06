@@ -1,7 +1,7 @@
 package config
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/logger"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
 	"os"
 )
 

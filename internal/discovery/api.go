@@ -1,8 +1,8 @@
 package discovery
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/model"
 	"context"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"net/http"
 )
 

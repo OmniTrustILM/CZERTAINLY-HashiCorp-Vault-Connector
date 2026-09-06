@@ -8,9 +8,9 @@ import (
 	"io"
 	"net/http"
 
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/logger"
-	sm "CZERTAINLY-HashiCorp-Vault-Connector/internal/secret/model"
-	internalVault "CZERTAINLY-HashiCorp-Vault-Connector/internal/secret/vault"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
+	sm "github.com/OmniTrustILM/hashicorp-vault-connector/internal/secret/model"
+	internalVault "github.com/OmniTrustILM/hashicorp-vault-connector/internal/secret/vault"
 
 	vcg "github.com/hashicorp/vault-client-go"
 	"go.uber.org/zap"

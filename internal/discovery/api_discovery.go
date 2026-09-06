@@ -1,8 +1,8 @@
 package discovery
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/model"
 	"encoding/json"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"io"
 	"net/http"
 	"strings"

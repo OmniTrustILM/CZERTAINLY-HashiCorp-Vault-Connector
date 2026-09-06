@@ -1,8 +1,8 @@
 package model
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/logger"
 	"encoding/json"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/logger"
 
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"

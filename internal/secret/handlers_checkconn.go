@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	sm "CZERTAINLY-HashiCorp-Vault-Connector/internal/secret/model"
+	sm "github.com/OmniTrustILM/hashicorp-vault-connector/internal/secret/model"
 )
 
 func (s *Server) checkVaultConnection(w http.ResponseWriter, r *http.Request) {

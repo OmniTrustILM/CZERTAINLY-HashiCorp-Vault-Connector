@@ -1,12 +1,12 @@
 package authority
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/db"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/model"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/utils"
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/vault"
 	"context"
 	"encoding/json"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/db"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/utils"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/vault"
 	vault2 "github.com/hashicorp/vault-client-go"
 	"github.com/yuseferi/zax/v2"
 	"go.uber.org/zap"

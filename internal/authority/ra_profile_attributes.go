@@ -1,8 +1,8 @@
 package authority
 
 import (
-	"CZERTAINLY-HashiCorp-Vault-Connector/internal/model"
 	"errors"
+	"github.com/OmniTrustILM/hashicorp-vault-connector/internal/model"
 	"strings"
 	"unicode"
 )

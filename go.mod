@@ -1,4 +1,4 @@
-module CZERTAINLY-HashiCorp-Vault-Connector
+module github.com/OmniTrustILM/hashicorp-vault-connector
 
 go 1.26.6
 
