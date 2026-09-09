@@ -3,7 +3,7 @@ module github.com/OmniTrustILM/hashicorp-vault-connector
 go 1.26.6
 
 require (
-	github.com/golang-migrate/migrate/v4 v4.19.1
+	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/hashicorp/vault-client-go v0.4.3
