@@ -2,7 +2,7 @@
 # Install golang
 
 # Build Stage
-FROM golang:1.26-alpine3.23 AS builder
+FROM golang:1.27-alpine3.23 AS builder
 
 ARG VERSION=dev
 ENV CGO_ENABLED=0 \
