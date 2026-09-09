@@ -7,7 +7,7 @@ info:
     url: https://www.omnitrust.com
     email: ilm@omnitrust.com
   license:
-    name: MIT License
+    name: Apache License, Version 2.0
     url: https://github.com/OmniTrustILM/hashicorp-vault-connector/blob/main/LICENSE.md
   version: 2.11.0
   x-logo:
